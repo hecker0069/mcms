@@ -17,8 +17,8 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-MCMS_REPO="https://github.com/mukulx/MCMS"
-MCMS_RAW="https://raw.githubusercontent.com/mukulx/MCMS/main/mcms.sh"
+MCMS_REPO="https://github.com/hecker0069/mcms"
+MCMS_RAW="https://raw.githubusercontent.com/hecker0069/MCMS/main/mcms.sh"
 MCMS_DIR="$HOME/mcms"
 
 echo -e "${CYAN}${BOLD}"
