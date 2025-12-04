@@ -1,28 +1,24 @@
 #!/bin/bash
 
-# ============================================
-# Minecraft Server Setup (Paper/Purpur)
-# For Ubuntu proot on Termux (aarch64)
-# One-command automatic setup
-# ============================================
+# ═══════════════════════════════════════════════════════════════════
+# Minecraft Server Setup (Paper/Purpur) for Termux Ubuntu proot
+# Features: Geyser, Floodgate, ngrok, playit.gg, auto-setup
+# ═══════════════════════════════════════════════════════════════════
 
 set -e
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m'
+# ─────────────────────────────────────────────────────────────────────
+# Configuration
+# ─────────────────────────────────────────────────────────────────────
 
-# Config - Use current directory
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SERVER_DIR="$SCRIPT_DIR/minecraft-server"
 
 # APIs
 PAPER_API="https://api.papermc.io/v2"
 PURPUR_API="https://api.purpurmc.org/v2/purpur"
+GEYSER_API="https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest/downloads/spigot"
+FLOODGATE_API="https://download.geysermc.org/v2/projects/floodgate/versions/latest/builds/latest/downloads/spigot"
 
 # Defaults
 SERVER_TYPE="paper"
@@ -30,166 +26,493 @@ SELECTED_VERSION=""
 RAM_SETTING="auto"
 GAMEMODE="survival"
 DIFFICULTY="normal"
+JAVA_VERSION="21"
+ENABLE_GEYSER=false
+ENABLE_NGROK=false
+ENABLE_PLAYIT=false
+JAVA_PORT=25565
+BEDROCK_PORT=19132
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+MAGENTA='\033[0;35m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+# ─────────────────────────────────────────────────────────────────────
+# Utility Functions
+# ─────────────────────────────────────────────────────────────────────
 
 print_banner() {
     clear
-    echo -e "${CYAN}"
-    echo "╔════════════════════════════════════════════╗"
-    echo "║   Minecraft Server Setup (Paper/Purpur)    ║"
-    echo "║   Ubuntu proot on Termux (aarch64)         ║"
-    echo "╚════════════════════════════════════════════╝"
+    echo -e "${CYAN}${BOLD}"
+    echo "╔═══════════════════════════════════════════════════════════╗"
+    echo "║         Minecraft Server Setup for Termux                 ║"
+    echo "║         Paper • Purpur • Geyser • Floodgate               ║"
+    echo "╚═══════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 }
 
-log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
+log_info()    { echo -e "${BLUE}[INFO]${NC} $1"; }
 log_success() { echo -e "${GREEN}[OK]${NC} $1"; }
-log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+log_warn()    { echo -e "${YELLOW}[WARN]${NC} $1"; }
+log_error()   { echo -e "${RED}[ERROR]${NC} $1"; }
+log_step()    { echo -e "${MAGENTA}[STEP]${NC} $1"; }
+
+separator() {
+    echo -e "${CYAN}─────────────────────────────────────────────────${NC}"
+}
+
+confirm() {
+    read -p "$1 (y/n) [default: $2]: " response
+    response=${response:-$2}
+    [[ "$response" =~ ^[Yy]$ ]]
+}
 
 check_environment() {
     if [ ! -f "/etc/os-release" ]; then
-        log_error "This script should run inside Ubuntu proot"
-        log_info "First run: proot-distro login ubuntu"
+        log_error "Run this inside Ubuntu proot!"
+        log_info "First: proot-distro login ubuntu"
         exit 1
     fi
 }
 
-install_dependencies() {
-    log_info "Updating packages..."
-    apt update -y && apt upgrade -y
-    
-    log_info "Installing required packages..."
-    apt install -y openjdk-17-jre-headless wget curl jq screen
-    
-    log_success "Dependencies installed!"
+check_internet() {
+    if ! curl -s --head --connect-timeout 5 https://google.com > /dev/null; then
+        log_error "No internet connection!"
+        exit 1
+    fi
 }
 
 
-# ============================================
-# Paper API Functions
-# ============================================
+# ─────────────────────────────────────────────────────────────────────
+# Java Management
+# ─────────────────────────────────────────────────────────────────────
+
+check_java() {
+    if command -v java &> /dev/null; then
+        java -version 2>&1 | head -1 | cut -d'"' -f2 | cut -d'.' -f1
+    else
+        echo "none"
+    fi
+}
+
+install_java() {
+    local version=${1:-21}
+    log_step "Installing Java $version..."
+    
+    apt update -y &>/dev/null
+    
+    case $version in
+        21)
+            apt install -y openjdk-21-jre-headless 2>/dev/null || \
+            apt install -y openjdk-21-jdk-headless 2>/dev/null || {
+                log_warn "Java 21 unavailable, using Java 17"
+                apt install -y openjdk-17-jre-headless
+                JAVA_VERSION="17"
+            }
+            ;;
+        17)
+            apt install -y openjdk-17-jre-headless
+            ;;
+        *)
+            apt install -y openjdk-17-jre-headless
+            ;;
+    esac
+    log_success "Java installed!"
+}
+
+select_java() {
+    local current=$(check_java)
+    
+    echo ""
+    echo -e "${CYAN}Java Version:${NC}"
+    separator
+    
+    if [ "$current" = "none" ]; then
+        echo -e "  ${RED}Not installed${NC}"
+    else
+        echo -e "  Current: ${GREEN}Java $current${NC}"
+    fi
+    
+    echo ""
+    echo -e "  ${GREEN}1${NC}) Java 17 (MC 1.17-1.20.4)"
+    echo -e "  ${GREEN}2${NC}) Java 21 (MC 1.20.5+) ${YELLOW}[recommended]${NC}"
+    [ "$current" != "none" ] && echo -e "  ${GREEN}3${NC}) Keep current"
+    echo ""
+    read -p "Select [default: 2]: " choice
+    
+    case $choice in
+        1) JAVA_VERSION="17"; install_java 17 ;;
+        3) [ "$current" != "none" ] && JAVA_VERSION="$current" ;;
+        *) JAVA_VERSION="21"; install_java 21 ;;
+    esac
+}
+
+ensure_java() {
+    local current=$(check_java)
+    if [ "$current" = "none" ]; then
+        log_info "No Java found, installing Java 21..."
+        install_java 21
+    else
+        log_info "Using Java $current"
+    fi
+}
+
+# ─────────────────────────────────────────────────────────────────────
+# Dependencies
+# ─────────────────────────────────────────────────────────────────────
+
+install_dependencies() {
+    log_step "Installing dependencies..."
+    apt update -y &>/dev/null
+    apt install -y wget curl jq screen unzip &>/dev/null
+    log_success "Dependencies ready!"
+}
+
+# ─────────────────────────────────────────────────────────────────────
+# Server Download Functions
+# ─────────────────────────────────────────────────────────────────────
 
 get_paper_versions() {
-    local versions=$(curl -sL "$PAPER_API/projects/paper" | jq -r '.versions[]' 2>/dev/null)
-    if [ -z "$versions" ]; then
-        log_error "Failed to fetch Paper versions"
-        return 1
-    fi
-    echo "$versions" | tail -10
+    curl -sL "$PAPER_API/projects/paper" | jq -r '.versions[]' 2>/dev/null | tail -10
 }
 
-get_paper_latest_build() {
-    local version=$1
-    local build=$(curl -sL "$PAPER_API/projects/paper/versions/$version/builds" | jq -r '.builds[-1].build' 2>/dev/null)
-    if [ -z "$build" ] || [ "$build" = "null" ]; then
-        log_error "Failed to get build for Paper $version"
-        return 1
-    fi
-    echo "$build"
+get_paper_build() {
+    local v=$1
+    curl -sL "$PAPER_API/projects/paper/versions/$v/builds" | jq -r '.builds[-1].build' 2>/dev/null
 }
 
 download_paper() {
-    local version=$1
-    local build=$2
-    local filename="paper-$version-$build.jar"
-    local url="$PAPER_API/projects/paper/versions/$version/builds/$build/downloads/$filename"
+    local version=$1 build=$2
+    local file="paper-$version-$build.jar"
+    local url="$PAPER_API/projects/paper/versions/$version/builds/$build/downloads/$file"
     
-    log_info "Downloading Paper $version (build $build)..."
-    log_info "URL: $url"
-    
-    if ! wget -q --show-progress -O "$SERVER_DIR/server.jar" "$url"; then
-        log_error "Download failed!"
-        return 1
-    fi
-    log_success "Paper server downloaded!"
+    log_step "Downloading Paper $version (build $build)..."
+    wget -q --show-progress -O "$SERVER_DIR/server.jar" "$url" || return 1
+    log_success "Paper downloaded!"
 }
-
-# ============================================
-# Purpur API Functions
-# ============================================
 
 get_purpur_versions() {
-    local versions=$(curl -sL "$PURPUR_API" | jq -r '.versions[]' 2>/dev/null)
-    if [ -z "$versions" ]; then
-        log_error "Failed to fetch Purpur versions"
-        return 1
-    fi
-    echo "$versions" | tail -10
+    curl -sL "$PURPUR_API" | jq -r '.versions[]' 2>/dev/null | tail -10
 }
 
-get_purpur_latest_build() {
-    local version=$1
-    local build=$(curl -sL "$PURPUR_API/$version" | jq -r '.builds.latest' 2>/dev/null)
-    if [ -z "$build" ] || [ "$build" = "null" ]; then
-        log_error "Failed to get build for Purpur $version"
-        return 1
-    fi
-    echo "$build"
+get_purpur_build() {
+    local v=$1
+    curl -sL "$PURPUR_API/$v" | jq -r '.builds.latest' 2>/dev/null
 }
 
 download_purpur() {
-    local version=$1
-    local build=$2
+    local version=$1 build=$2
     local url="$PURPUR_API/$version/$build/download"
     
-    log_info "Downloading Purpur $version (build $build)..."
-    log_info "URL: $url"
-    
-    if ! wget -q --show-progress -O "$SERVER_DIR/server.jar" "$url"; then
-        log_error "Download failed!"
-        return 1
-    fi
-    log_success "Purpur server downloaded!"
+    log_step "Downloading Purpur $version (build $build)..."
+    wget -q --show-progress -O "$SERVER_DIR/server.jar" "$url" || return 1
+    log_success "Purpur downloaded!"
 }
-
-# ============================================
-# Generic Functions
-# ============================================
 
 get_versions() {
-    if [ "$SERVER_TYPE" = "purpur" ]; then
-        get_purpur_versions
-    else
-        get_paper_versions
-    fi
+    [ "$SERVER_TYPE" = "purpur" ] && get_purpur_versions || get_paper_versions
 }
 
-get_latest_build() {
-    local version=$1
-    if [ "$SERVER_TYPE" = "purpur" ]; then
-        get_purpur_latest_build "$version"
-    else
-        get_paper_latest_build "$version"
-    fi
+get_build() {
+    [ "$SERVER_TYPE" = "purpur" ] && get_purpur_build "$1" || get_paper_build "$1"
 }
 
-download_server() {
-    local version=$1
-    local build=$2
-    if [ "$SERVER_TYPE" = "purpur" ]; then
-        download_purpur "$version" "$build"
-    else
-        download_paper "$version" "$build"
-    fi
+download_server_jar() {
+    local version=$1 build=$2
+    [ "$SERVER_TYPE" = "purpur" ] && download_purpur "$version" "$build" || download_paper "$version" "$build"
 }
 
 
-# ============================================
-# Server Setup Functions
-# ============================================
+# ─────────────────────────────────────────────────────────────────────
+# Geyser & Floodgate (Bedrock Support)
+# ─────────────────────────────────────────────────────────────────────
 
-setup_server() {
-    log_info "Creating server directory: $SERVER_DIR"
-    mkdir -p "$SERVER_DIR"
+download_geyser() {
+    log_step "Downloading Geyser (Bedrock support)..."
+    mkdir -p "$SERVER_DIR/plugins"
+    wget -q --show-progress -O "$SERVER_DIR/plugins/Geyser-Spigot.jar" "$GEYSER_API" || {
+        log_error "Geyser download failed!"
+        return 1
+    }
+    log_success "Geyser downloaded!"
+}
+
+download_floodgate() {
+    log_step "Downloading Floodgate (Bedrock auth)..."
+    mkdir -p "$SERVER_DIR/plugins"
+    wget -q --show-progress -O "$SERVER_DIR/plugins/floodgate-spigot.jar" "$FLOODGATE_API" || {
+        log_error "Floodgate download failed!"
+        return 1
+    }
+    log_success "Floodgate downloaded!"
+}
+
+configure_geyser() {
+    mkdir -p "$SERVER_DIR/plugins/Geyser-Spigot"
+    
+    cat > "$SERVER_DIR/plugins/Geyser-Spigot/config.yml" << EOF
+bedrock:
+  address: 0.0.0.0
+  port: $BEDROCK_PORT
+  clone-remote-port: false
+  motd1: "Mobile Minecraft Server"
+  motd2: "Geyser Enabled"
+  server-name: "Mobile Server"
+remote:
+  address: 127.0.0.1
+  port: $JAVA_PORT
+  auth-type: floodgate
+passthrough-motd: true
+passthrough-player-counts: true
+command-suggestions: true
+show-cooldown: title
+emote-offhand-workaround: disabled
+EOF
+    log_success "Geyser configured!"
+}
+
+configure_floodgate() {
+    mkdir -p "$SERVER_DIR/plugins/floodgate"
+    
+    cat > "$SERVER_DIR/plugins/floodgate/config.yml" << 'EOF'
+username-prefix: "."
+replace-spaces: true
+disconnect:
+  invalid-prefix: "Please remove the prefix from your name!"
+  invalid-username: "Invalid username!"
+player-link:
+  enabled: true
+  require-link: false
+  allowed-link-type: any
+EOF
+    log_success "Floodgate configured!"
+}
+
+setup_geyser_floodgate() {
+    download_geyser
+    download_floodgate
+    configure_geyser
+    configure_floodgate
+    ENABLE_GEYSER=true
+}
+
+select_geyser() {
+    echo ""
+    echo -e "${CYAN}Bedrock Support (Geyser + Floodgate):${NC}"
+    separator
+    echo -e "  Allows Bedrock players (PE, Console, Win10) to join!"
+    echo ""
+    echo -e "  ${GREEN}1${NC}) Enable Geyser + Floodgate ${YELLOW}[recommended]${NC}"
+    echo -e "  ${GREEN}2${NC}) Skip (Java only)"
+    echo ""
+    read -p "Select [default: 1]: " choice
+    
+    case $choice in
+        2) ENABLE_GEYSER=false ;;
+        *) ENABLE_GEYSER=true ;;
+    esac
+}
+
+# ─────────────────────────────────────────────────────────────────────
+# Port Forwarding - ngrok
+# ─────────────────────────────────────────────────────────────────────
+
+install_ngrok() {
+    log_step "Installing ngrok..."
+    
+    local arch=$(uname -m)
+    local ngrok_url=""
+    
+    case $arch in
+        aarch64) ngrok_url="https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-arm64.tgz" ;;
+        armv7l)  ngrok_url="https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-arm.tgz" ;;
+        x86_64)  ngrok_url="https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz" ;;
+        *)       log_error "Unsupported arch: $arch"; return 1 ;;
+    esac
+    
+    wget -q --show-progress -O /tmp/ngrok.tgz "$ngrok_url"
+    tar -xzf /tmp/ngrok.tgz -C /usr/local/bin
+    rm /tmp/ngrok.tgz
+    chmod +x /usr/local/bin/ngrok
+    
+    log_success "ngrok installed!"
+}
+
+setup_ngrok() {
+    if ! command -v ngrok &>/dev/null; then
+        install_ngrok
+    fi
+    
+    echo ""
+    echo -e "${CYAN}ngrok Setup:${NC}"
+    separator
+    echo -e "  1. Go to ${GREEN}https://ngrok.com${NC} and create free account"
+    echo -e "  2. Copy your authtoken from dashboard"
+    echo ""
+    read -p "Enter ngrok authtoken: " authtoken
+    
+    if [ -n "$authtoken" ]; then
+        ngrok config add-authtoken "$authtoken"
+        log_success "ngrok configured!"
+        
+        # Create ngrok start script
+        cat > "$SERVER_DIR/start-ngrok.sh" << EOF
+#!/bin/bash
+echo "Starting ngrok tunnels..."
+echo ""
+
+# Java Edition tunnel
+ngrok tcp $JAVA_PORT --log=stdout > /tmp/ngrok-java.log 2>&1 &
+JAVA_PID=\$!
+sleep 3
+
+# Get Java tunnel URL
+JAVA_URL=\$(curl -s http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url' 2>/dev/null)
+
+echo -e "\033[0;32m═══════════════════════════════════════════\033[0m"
+echo -e "\033[0;32m  ngrok Tunnels Active!\033[0m"
+echo -e "\033[0;32m═══════════════════════════════════════════\033[0m"
+echo ""
+echo -e "  Java Edition: \033[0;33m\${JAVA_URL#tcp://}\033[0m"
+EOF
+
+        if [ "$ENABLE_GEYSER" = true ]; then
+            cat >> "$SERVER_DIR/start-ngrok.sh" << EOF
+
+# Bedrock tunnel (separate ngrok instance)
+echo ""
+echo -e "  \033[0;33mNote: Free ngrok only allows 1 tunnel.\033[0m"
+echo -e "  \033[0;33mFor Bedrock, use playit.gg instead!\033[0m"
+EOF
+        fi
+
+        cat >> "$SERVER_DIR/start-ngrok.sh" << 'EOF'
+
+echo ""
+echo "Press Ctrl+C to stop tunnels"
+wait
+EOF
+        chmod +x "$SERVER_DIR/start-ngrok.sh"
+        ENABLE_NGROK=true
+    else
+        log_warn "Skipped ngrok setup"
+    fi
+}
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Port Forwarding - playit.gg
+# ─────────────────────────────────────────────────────────────────────
+
+install_playit() {
+    log_step "Installing playit.gg..."
+    
+    local arch=$(uname -m)
+    local playit_url=""
+    
+    case $arch in
+        aarch64) playit_url="https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-linux-aarch64" ;;
+        armv7l)  playit_url="https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-linux-armv7" ;;
+        x86_64)  playit_url="https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-linux-amd64" ;;
+        *)       log_error "Unsupported arch: $arch"; return 1 ;;
+    esac
+    
+    wget -q --show-progress -O /usr/local/bin/playit "$playit_url"
+    chmod +x /usr/local/bin/playit
+    
+    log_success "playit.gg installed!"
+}
+
+setup_playit() {
+    if ! command -v playit &>/dev/null; then
+        install_playit
+    fi
+    
+    echo ""
+    echo -e "${CYAN}playit.gg Setup:${NC}"
+    separator
+    echo -e "  ${GREEN}playit.gg${NC} is FREE and supports both Java & Bedrock!"
+    echo ""
+    echo -e "  ${YELLOW}Steps:${NC}"
+    echo -e "  1. Run: ${GREEN}playit${NC}"
+    echo -e "  2. Open the link shown in browser"
+    echo -e "  3. Create account and claim your agent"
+    echo -e "  4. Add tunnels for your ports:"
+    echo -e "     - Java: TCP port ${GREEN}$JAVA_PORT${NC}"
+    [ "$ENABLE_GEYSER" = true ] && echo -e "     - Bedrock: UDP port ${GREEN}$BEDROCK_PORT${NC}"
+    echo ""
+    
+    # Create playit start script
+    cat > "$SERVER_DIR/start-playit.sh" << 'EOF'
+#!/bin/bash
+echo "Starting playit.gg tunnel..."
+echo ""
+echo "If first time, follow the link to claim your agent!"
+echo ""
+playit
+EOF
+    chmod +x "$SERVER_DIR/start-playit.sh"
+    
+    read -p "Run playit setup now? (y/n) [default: y]: " run_now
+    run_now=${run_now:-y}
+    
+    if [[ "$run_now" =~ ^[Yy]$ ]]; then
+        echo ""
+        log_info "Starting playit... Follow the instructions!"
+        echo ""
+        playit
+    fi
+    
+    ENABLE_PLAYIT=true
+    log_success "playit.gg ready!"
+}
+
+# ─────────────────────────────────────────────────────────────────────
+# Port Forwarding Menu
+# ─────────────────────────────────────────────────────────────────────
+
+select_port_forwarding() {
+    echo ""
+    echo -e "${CYAN}Port Forwarding (Play from anywhere):${NC}"
+    separator
+    echo -e "  ${GREEN}1${NC}) None (LAN only)"
+    echo -e "  ${GREEN}2${NC}) ngrok (free, 1 tunnel)"
+    echo -e "  ${GREEN}3${NC}) playit.gg (free, unlimited) ${YELLOW}[recommended]${NC}"
+    echo -e "  ${GREEN}4${NC}) Both ngrok + playit"
+    echo ""
+    read -p "Select [default: 1]: " choice
+    
+    case $choice in
+        2) setup_ngrok ;;
+        3) setup_playit ;;
+        4) setup_ngrok; setup_playit ;;
+        *) log_info "Skipping port forwarding (LAN only)" ;;
+    esac
+}
+
+# ─────────────────────────────────────────────────────────────────────
+# Server Configuration
+# ─────────────────────────────────────────────────────────────────────
+
+setup_server_files() {
+    log_step "Creating server directory..."
+    mkdir -p "$SERVER_DIR/plugins"
     cd "$SERVER_DIR"
     
-    # Accept EULA
+    # EULA
     echo "eula=true" > eula.txt
     log_success "EULA accepted"
     
-    # Create server.properties
+    # server.properties
     cat > server.properties << EOF
-server-port=25565
+# Server Settings
+server-port=$JAVA_PORT
 gamemode=$GAMEMODE
 difficulty=$DIFFICULTY
 max-players=10
@@ -198,30 +521,36 @@ simulation-distance=6
 spawn-protection=0
 online-mode=false
 enable-command-block=true
-motd=\u00A7bMobile ${SERVER_TYPE^} Server \u00A77- \u00A7aTermux
+motd=\u00A7b\u00A7lMobile Server \u00A77| \u00A7a${SERVER_TYPE^}
+allow-flight=true
+white-list=false
+pvp=true
+enable-status=true
 EOF
-    log_success "Server properties configured"
+    log_success "server.properties created"
 }
 
 create_start_script() {
-    cat > "$SERVER_DIR/start.sh" << 'EOF'
+    cat > "$SERVER_DIR/start.sh" << 'STARTSCRIPT'
 #!/bin/bash
 cd "$(dirname "$0")"
 
-# Memory settings based on device
+# Auto RAM detection
 TOTAL_MEM=$(free -m | awk '/^Mem:/{print $2}')
 if [ $TOTAL_MEM -gt 4000 ]; then
-    XMX="2G"
-    XMS="1G"
+    XMX="2G"; XMS="1G"
 elif [ $TOTAL_MEM -gt 2000 ]; then
-    XMX="1G"
-    XMS="512M"
+    XMX="1G"; XMS="512M"
 else
-    XMX="512M"
-    XMS="256M"
+    XMX="512M"; XMS="256M"
 fi
 
-echo "Starting server with ${XMX} max memory..."
+echo "════════════════════════════════════════"
+echo "  Starting Minecraft Server"
+echo "  RAM: ${XMS} - ${XMX}"
+echo "════════════════════════════════════════"
+echo ""
+
 java -Xmx${XMX} -Xms${XMS} \
     -XX:+UseG1GC \
     -XX:+ParallelRefProcEnabled \
@@ -236,32 +565,34 @@ java -Xmx${XMX} -Xms${XMS} \
     -XX:G1MixedGCCountTarget=4 \
     -XX:InitiatingHeapOccupancyPercent=15 \
     -XX:G1MixedGCLiveThresholdPercent=90 \
-    -XX:G1RSetUpdatingPauseTimePercent=5 \
     -XX:SurvivorRatio=32 \
     -XX:+PerfDisableSharedMem \
     -XX:MaxTenuringThreshold=1 \
     -Dusing.aikars.flags=https://mcflags.emc.gs \
-    -Daikars.new.flags=true \
     -jar server.jar nogui
-EOF
+STARTSCRIPT
     chmod +x "$SERVER_DIR/start.sh"
-    log_success "Start script created"
-}
-
-create_screen_script() {
-    cat > "$SERVER_DIR/run-background.sh" << 'EOF'
+    
+    # Background script
+    cat > "$SERVER_DIR/start-background.sh" << 'EOF'
 #!/bin/bash
 cd "$(dirname "$0")"
 screen -dmS minecraft ./start.sh
+echo ""
 echo "Server started in background!"
-echo "Use 'screen -r minecraft' to attach"
-echo "Press Ctrl+A then D to detach"
+echo ""
+echo "Commands:"
+echo "  Attach:  screen -r minecraft"
+echo "  Detach:  Ctrl+A then D"
+echo "  Stop:    Type 'stop' in console"
+echo ""
 EOF
-    chmod +x "$SERVER_DIR/run-background.sh"
-    log_success "Background script created"
+    chmod +x "$SERVER_DIR/start-background.sh"
+    
+    log_success "Start scripts created"
 }
 
-optimize_for_mobile() {
+optimize_mobile() {
     mkdir -p "$SERVER_DIR/config"
     
     cat > "$SERVER_DIR/config/paper-global.yml" << 'EOF'
@@ -277,27 +608,21 @@ EOF
     log_success "Mobile optimizations applied"
 }
 
-update_ram_setting() {
-    if [ "$RAM_SETTING" != "auto" ]; then
-        sed -i "s/XMX=.*/XMX=\"$RAM_SETTING\"/" "$SERVER_DIR/start.sh"
-    fi
-}
 
-
-# ============================================
+# ─────────────────────────────────────────────────────────────────────
 # Selection Menus
-# ============================================
+# ─────────────────────────────────────────────────────────────────────
 
 select_server_type() {
     echo ""
-    echo -e "${CYAN}Server Type:${NC}"
-    echo "─────────────────────────────"
-    echo -e "  ${GREEN}1${NC}) Paper - Optimized Minecraft server"
-    echo -e "  ${GREEN}2${NC}) Purpur - Paper fork with more features"
+    echo -e "${CYAN}Server Software:${NC}"
+    separator
+    echo -e "  ${GREEN}1${NC}) Paper - Fast & optimized"
+    echo -e "  ${GREEN}2${NC}) Purpur - More features & customization"
     echo ""
-    read -p "Select server type [default: 1]: " type_choice
+    read -p "Select [default: 1]: " choice
     
-    case $type_choice in
+    case $choice in
         2) SERVER_TYPE="purpur" ;;
         *) SERVER_TYPE="paper" ;;
     esac
@@ -306,53 +631,46 @@ select_server_type() {
 
 select_version() {
     echo ""
-    echo -e "${CYAN}Fetching ${SERVER_TYPE^} versions...${NC}"
+    log_info "Fetching ${SERVER_TYPE^} versions..."
     
     local versions_list=$(get_versions)
-    if [ -z "$versions_list" ]; then
-        log_error "Could not fetch versions"
-        exit 1
-    fi
+    [ -z "$versions_list" ] && { log_error "Failed to fetch versions"; exit 1; }
     
-    # Convert to array
     readarray -t versions <<< "$versions_list"
+    local count=${#versions[@]}
     
     echo ""
-    echo -e "${CYAN}Available Minecraft Versions:${NC}"
-    echo "─────────────────────────────"
+    echo -e "${CYAN}Minecraft Version:${NC}"
+    separator
     
-    local count=${#versions[@]}
     for i in "${!versions[@]}"; do
         local num=$((count - i))
-        echo -e "  ${GREEN}${num}${NC}) ${versions[$i]}"
+        local ver="${versions[$i]}"
+        [ $num -eq 1 ] && echo -e "  ${GREEN}${num}${NC}) $ver ${YELLOW}[latest]${NC}" || echo -e "  ${GREEN}${num}${NC}) $ver"
     done
     
     echo ""
-    read -p "Select version (1-$count) [default: 1 = ${versions[-1]}]: " choice
+    read -p "Select (1-$count) [default: 1]: " choice
     
-    if [ -z "$choice" ] || [ "$choice" -lt 1 ] || [ "$choice" -gt "$count" ]; then
-        choice=1
-    fi
+    [ -z "$choice" ] || [ "$choice" -lt 1 ] || [ "$choice" -gt "$count" ] && choice=1
     
-    # Get version (1 = latest)
     local idx=$((count - choice))
     SELECTED_VERSION="${versions[$idx]}"
-    
-    log_info "Selected version: $SELECTED_VERSION"
+    log_info "Selected: $SELECTED_VERSION"
 }
 
 select_ram() {
     echo ""
     echo -e "${CYAN}RAM Allocation:${NC}"
-    echo "─────────────────────────────"
-    echo -e "  ${GREEN}1${NC}) Auto-detect (recommended)"
-    echo -e "  ${GREEN}2${NC}) 512MB (low-end device)"
-    echo -e "  ${GREEN}3${NC}) 1GB (mid-range device)"
-    echo -e "  ${GREEN}4${NC}) 2GB (high-end device)"
+    separator
+    echo -e "  ${GREEN}1${NC}) Auto-detect ${YELLOW}[recommended]${NC}"
+    echo -e "  ${GREEN}2${NC}) 512MB (low-end)"
+    echo -e "  ${GREEN}3${NC}) 1GB (mid-range)"
+    echo -e "  ${GREEN}4${NC}) 2GB (high-end)"
     echo ""
-    read -p "Select option [default: 1]: " ram_choice
+    read -p "Select [default: 1]: " choice
     
-    case $ram_choice in
+    case $choice in
         2) RAM_SETTING="512M" ;;
         3) RAM_SETTING="1G" ;;
         4) RAM_SETTING="2G" ;;
@@ -363,15 +681,15 @@ select_ram() {
 select_gamemode() {
     echo ""
     echo -e "${CYAN}Default Gamemode:${NC}"
-    echo "─────────────────────────────"
+    separator
     echo -e "  ${GREEN}1${NC}) Survival"
     echo -e "  ${GREEN}2${NC}) Creative"
     echo -e "  ${GREEN}3${NC}) Adventure"
     echo -e "  ${GREEN}4${NC}) Spectator"
     echo ""
-    read -p "Select gamemode [default: 1]: " gm_choice
+    read -p "Select [default: 1]: " choice
     
-    case $gm_choice in
+    case $choice in
         2) GAMEMODE="creative" ;;
         3) GAMEMODE="adventure" ;;
         4) GAMEMODE="spectator" ;;
@@ -382,15 +700,15 @@ select_gamemode() {
 select_difficulty() {
     echo ""
     echo -e "${CYAN}Difficulty:${NC}"
-    echo "─────────────────────────────"
+    separator
     echo -e "  ${GREEN}1${NC}) Peaceful"
     echo -e "  ${GREEN}2${NC}) Easy"
     echo -e "  ${GREEN}3${NC}) Normal"
     echo -e "  ${GREEN}4${NC}) Hard"
     echo ""
-    read -p "Select difficulty [default: 3]: " diff_choice
+    read -p "Select [default: 3]: " choice
     
-    case $diff_choice in
+    case $choice in
         1) DIFFICULTY="peaceful" ;;
         2) DIFFICULTY="easy" ;;
         4) DIFFICULTY="hard" ;;
@@ -398,226 +716,311 @@ select_difficulty() {
     esac
 }
 
-
-# ============================================
+# ─────────────────────────────────────────────────────────────────────
 # Setup Flows
-# ============================================
+# ─────────────────────────────────────────────────────────────────────
 
-show_info_and_start() {
+show_completion() {
     echo ""
-    echo -e "${GREEN}════════════════════════════════════════════${NC}"
-    echo -e "${GREEN}   Setup Complete!${NC}"
-    echo -e "${GREEN}════════════════════════════════════════════${NC}"
+    echo -e "${GREEN}${BOLD}═══════════════════════════════════════════════════════${NC}"
+    echo -e "${GREEN}${BOLD}                  Setup Complete!${NC}"
+    echo -e "${GREEN}${BOLD}═══════════════════════════════════════════════════════${NC}"
     echo ""
-    echo -e "${CYAN}Server Type:${NC} ${SERVER_TYPE^}"
-    echo -e "${CYAN}Version:${NC} $SELECTED_VERSION"
-    echo -e "${CYAN}Location:${NC} $SERVER_DIR"
-    echo -e "${CYAN}Gamemode:${NC} $GAMEMODE"
-    echo -e "${CYAN}Difficulty:${NC} $DIFFICULTY"
-    echo ""
-    echo -e "${YELLOW}Commands:${NC}"
-    echo -e "  Start:       ${GREEN}cd $SERVER_DIR && ./start.sh${NC}"
-    echo -e "  Background:  ${GREEN}cd $SERVER_DIR && ./run-background.sh${NC}"
-    echo -e "  Attach:      ${GREEN}screen -r minecraft${NC}"
-    echo ""
-    echo -e "${YELLOW}Connect:${NC} localhost:25565"
-    echo ""
-    echo -e "${CYAN}Starting server now...${NC}"
-    echo ""
+    echo -e "${CYAN}Server Info:${NC}"
+    echo -e "  Type:      ${GREEN}${SERVER_TYPE^}${NC}"
+    echo -e "  Version:   ${GREEN}$SELECTED_VERSION${NC}"
+    echo -e "  Location:  ${GREEN}$SERVER_DIR${NC}"
+    echo -e "  Gamemode:  ${GREEN}$GAMEMODE${NC}"
+    echo -e "  Difficulty:${GREEN}$DIFFICULTY${NC}"
     
-    cd "$SERVER_DIR"
-    ./start.sh
+    if [ "$ENABLE_GEYSER" = true ]; then
+        echo ""
+        echo -e "${CYAN}Bedrock Support:${NC} ${GREEN}Enabled${NC}"
+        echo -e "  Java Port:    ${GREEN}$JAVA_PORT${NC}"
+        echo -e "  Bedrock Port: ${GREEN}$BEDROCK_PORT${NC}"
+    fi
+    
+    echo ""
+    echo -e "${CYAN}Commands:${NC}"
+    echo -e "  Start:        ${GREEN}cd $SERVER_DIR && ./start.sh${NC}"
+    echo -e "  Background:   ${GREEN}./start-background.sh${NC}"
+    echo -e "  Attach:       ${GREEN}screen -r minecraft${NC}"
+    
+    if [ "$ENABLE_NGROK" = true ]; then
+        echo -e "  ngrok:        ${GREEN}./start-ngrok.sh${NC}"
+    fi
+    if [ "$ENABLE_PLAYIT" = true ]; then
+        echo -e "  playit:       ${GREEN}./start-playit.sh${NC}"
+    fi
+    
+    echo ""
+    echo -e "${CYAN}Connect:${NC}"
+    echo -e "  Java:    ${GREEN}localhost:$JAVA_PORT${NC}"
+    [ "$ENABLE_GEYSER" = true ] && echo -e "  Bedrock: ${GREEN}localhost:$BEDROCK_PORT${NC}"
+    echo ""
 }
 
 quick_setup() {
-    log_info "Quick setup with defaults..."
+    print_banner
+    log_step "Quick Setup - Paper with defaults"
+    separator
     
-    # Default to Paper
+    check_internet
+    ensure_java
+    
     SERVER_TYPE="paper"
+    GAMEMODE="survival"
+    DIFFICULTY="normal"
     
-    # Get latest version
-    log_info "Fetching latest ${SERVER_TYPE^} version..."
+    log_info "Fetching latest Paper version..."
     local versions=$(get_versions)
     SELECTED_VERSION=$(echo "$versions" | tail -1)
+    [ -z "$SELECTED_VERSION" ] && { log_error "Failed to get version"; exit 1; }
     
-    if [ -z "$SELECTED_VERSION" ]; then
-        log_error "Failed to get version"
-        exit 1
-    fi
-    log_info "Using version: $SELECTED_VERSION"
+    log_info "Version: $SELECTED_VERSION"
     
-    # Get latest build
-    log_info "Getting latest build..."
-    local build=$(get_latest_build "$SELECTED_VERSION")
-    
-    if [ -z "$build" ] || [ "$build" = "null" ]; then
-        log_error "Failed to get build number"
-        exit 1
-    fi
+    local build=$(get_build "$SELECTED_VERSION")
+    [ -z "$build" ] || [ "$build" = "null" ] && { log_error "Failed to get build"; exit 1; }
     log_info "Build: $build"
     
-    # Setup
-    setup_server
-    download_server "$SELECTED_VERSION" "$build"
+    setup_server_files
+    download_server_jar "$SELECTED_VERSION" "$build"
     create_start_script
-    create_screen_script
-    optimize_for_mobile
+    optimize_mobile
     
-    show_info_and_start
+    show_completion
+    
+    echo -e "${CYAN}Starting server...${NC}"
+    echo ""
+    cd "$SERVER_DIR" && ./start.sh
 }
 
 custom_setup() {
+    print_banner
+    log_step "Custom Setup"
+    separator
+    
+    check_internet
+    select_java
     select_server_type
     select_version
     select_ram
     select_gamemode
     select_difficulty
+    select_geyser
+    select_port_forwarding
     
-    # Get build
-    log_info "Getting latest build for $SELECTED_VERSION..."
-    local build=$(get_latest_build "$SELECTED_VERSION")
+    echo ""
+    log_step "Downloading and configuring..."
+    separator
     
-    if [ -z "$build" ] || [ "$build" = "null" ]; then
-        log_error "Failed to get build number for $SELECTED_VERSION"
-        exit 1
-    fi
-    log_info "Build: $build"
+    local build=$(get_build "$SELECTED_VERSION")
+    [ -z "$build" ] || [ "$build" = "null" ] && { log_error "Failed to get build"; exit 1; }
     
-    # Setup
-    setup_server
-    download_server "$SELECTED_VERSION" "$build"
+    setup_server_files
+    download_server_jar "$SELECTED_VERSION" "$build"
     create_start_script
-    create_screen_script
-    optimize_for_mobile
-    update_ram_setting
+    optimize_mobile
     
-    show_info_and_start
+    [ "$ENABLE_GEYSER" = true ] && setup_geyser_floodgate
+    
+    # Update RAM if not auto
+    [ "$RAM_SETTING" != "auto" ] && sed -i "s/XMX=.*/XMX=\"$RAM_SETTING\"/" "$SERVER_DIR/start.sh"
+    
+    show_completion
+    
+    echo -e "${CYAN}Starting server...${NC}"
+    echo ""
+    cd "$SERVER_DIR" && ./start.sh
 }
 
+
+# ─────────────────────────────────────────────────────────────────────
+# Additional Setup Functions
+# ─────────────────────────────────────────────────────────────────────
+
 update_server() {
-    if [ ! -d "$SERVER_DIR" ]; then
-        log_error "No server found at $SERVER_DIR"
-        exit 1
-    fi
+    print_banner
+    
+    [ ! -d "$SERVER_DIR" ] && { log_error "No server at $SERVER_DIR"; exit 1; }
+    
+    log_step "Update Server"
+    separator
     
     select_server_type
     select_version
     
-    local build=$(get_latest_build "$SELECTED_VERSION")
-    if [ -z "$build" ] || [ "$build" = "null" ]; then
-        log_error "Failed to get build"
-        exit 1
-    fi
+    local build=$(get_build "$SELECTED_VERSION")
+    [ -z "$build" ] || [ "$build" = "null" ] && { log_error "Failed to get build"; exit 1; }
     
-    # Backup old jar
-    if [ -f "$SERVER_DIR/server.jar" ]; then
-        mv "$SERVER_DIR/server.jar" "$SERVER_DIR/server.jar.backup"
-    fi
+    # Backup
+    [ -f "$SERVER_DIR/server.jar" ] && mv "$SERVER_DIR/server.jar" "$SERVER_DIR/server.jar.backup"
     
-    download_server "$SELECTED_VERSION" "$build"
-    log_success "Server updated to ${SERVER_TYPE^} $SELECTED_VERSION (build $build)"
+    download_server_jar "$SELECTED_VERSION" "$build"
+    log_success "Updated to ${SERVER_TYPE^} $SELECTED_VERSION (build $build)"
 }
 
+add_geyser() {
+    print_banner
+    
+    [ ! -d "$SERVER_DIR" ] && { log_error "No server at $SERVER_DIR"; exit 1; }
+    
+    log_step "Adding Geyser + Floodgate"
+    separator
+    
+    setup_geyser_floodgate
+    log_success "Geyser & Floodgate installed!"
+    echo ""
+    echo -e "${YELLOW}Restart your server to activate!${NC}"
+}
 
-# ============================================
+setup_tunnels() {
+    print_banner
+    log_step "Port Forwarding Setup"
+    separator
+    
+    # Check if geyser is enabled
+    [ -f "$SERVER_DIR/plugins/Geyser-Spigot.jar" ] && ENABLE_GEYSER=true
+    
+    select_port_forwarding
+}
+
+show_status() {
+    print_banner
+    
+    local java_ver=$(check_java)
+    
+    echo -e "${CYAN}System Status:${NC}"
+    separator
+    
+    if [ "$java_ver" = "none" ]; then
+        echo -e "  Java:     ${RED}Not installed${NC}"
+    else
+        echo -e "  Java:     ${GREEN}Version $java_ver${NC}"
+    fi
+    
+    if [ -d "$SERVER_DIR" ]; then
+        echo -e "  Server:   ${GREEN}Installed${NC}"
+        echo -e "  Location: ${GREEN}$SERVER_DIR${NC}"
+        
+        [ -f "$SERVER_DIR/plugins/Geyser-Spigot.jar" ] && echo -e "  Geyser:   ${GREEN}Installed${NC}" || echo -e "  Geyser:   ${YELLOW}Not installed${NC}"
+        [ -f "$SERVER_DIR/plugins/floodgate-spigot.jar" ] && echo -e "  Floodgate:${GREEN}Installed${NC}" || echo -e "  Floodgate:${YELLOW}Not installed${NC}"
+    else
+        echo -e "  Server:   ${RED}Not installed${NC}"
+    fi
+    
+    command -v ngrok &>/dev/null && echo -e "  ngrok:    ${GREEN}Installed${NC}" || echo -e "  ngrok:    ${YELLOW}Not installed${NC}"
+    command -v playit &>/dev/null && echo -e "  playit:   ${GREEN}Installed${NC}" || echo -e "  playit:   ${YELLOW}Not installed${NC}"
+    
+    echo ""
+}
+
+# ─────────────────────────────────────────────────────────────────────
 # Main Menu
-# ============================================
+# ─────────────────────────────────────────────────────────────────────
 
 main_menu() {
     print_banner
+    show_status
     
-    echo -e "${CYAN}Server will be installed in:${NC} $SERVER_DIR"
-    echo ""
-    echo -e "${CYAN}Setup Options:${NC}"
-    echo "─────────────────────────────"
+    echo -e "${CYAN}Options:${NC}"
+    separator
     echo -e "  ${GREEN}1${NC}) Quick Setup (Paper, latest, defaults)"
     echo -e "  ${GREEN}2${NC}) Custom Setup (choose everything)"
-    echo -e "  ${GREEN}3${NC}) Update existing server"
-    echo -e "  ${GREEN}4${NC}) Uninstall"
-    echo -e "  ${GREEN}5${NC}) Exit"
+    echo -e "  ${GREEN}3${NC}) Add Geyser + Floodgate"
+    echo -e "  ${GREEN}4${NC}) Setup Port Forwarding"
+    echo -e "  ${GREEN}5${NC}) Install/Change Java"
+    echo -e "  ${GREEN}6${NC}) Update Server"
+    echo -e "  ${GREEN}7${NC}) Start Server"
+    echo -e "  ${GREEN}8${NC}) Uninstall"
+    echo -e "  ${GREEN}0${NC}) Exit"
     echo ""
-    read -p "Select option: " main_choice
+    read -p "Select: " choice
     
-    case $main_choice in
-        1)
-            check_environment
-            install_dependencies
-            quick_setup
-            ;;
-        2)
-            check_environment
-            install_dependencies
-            custom_setup
-            ;;
-        3)
-            update_server
-            ;;
-        4)
-            read -p "Delete all server data? (yes/no): " confirm
-            if [ "$confirm" = "yes" ]; then
-                rm -rf "$SERVER_DIR"
-                log_success "Server uninstalled"
+    case $choice in
+        1) check_environment; install_dependencies; quick_setup ;;
+        2) check_environment; install_dependencies; custom_setup ;;
+        3) check_environment; add_geyser ;;
+        4) check_environment; install_dependencies; setup_tunnels ;;
+        5) check_environment; apt update -y; select_java; main_menu ;;
+        6) check_environment; update_server ;;
+        7)
+            if [ -f "$SERVER_DIR/start.sh" ]; then
+                cd "$SERVER_DIR" && ./start.sh
+            else
+                log_error "Server not installed!"
+                sleep 2
+                main_menu
             fi
             ;;
-        5)
-            echo "Goodbye!"
-            exit 0
-            ;;
-        *)
-            log_error "Invalid option"
+        8)
+            echo ""
+            read -p "Delete ALL server data? (type 'yes'): " confirm
+            [ "$confirm" = "yes" ] && { rm -rf "$SERVER_DIR"; log_success "Uninstalled"; } || log_info "Cancelled"
+            sleep 2
             main_menu
             ;;
+        0) echo "Goodbye!"; exit 0 ;;
+        *) main_menu ;;
     esac
 }
 
-# ============================================
-# Command Line Arguments
-# ============================================
+# ─────────────────────────────────────────────────────────────────────
+# Command Line Interface
+# ─────────────────────────────────────────────────────────────────────
 
 show_help() {
-    echo "Minecraft Server Setup (Paper/Purpur)"
+    echo "Minecraft Server Setup for Termux"
     echo ""
-    echo "Usage: $0 [option]"
+    echo "Usage: $0 [command]"
     echo ""
-    echo "Options:"
-    echo "  --quick, -q       Quick setup (Paper, latest version)"
-    echo "  --purpur, -p      Quick setup with Purpur"
-    echo "  --start, -s       Start existing server"
-    echo "  --background, -b  Start in background"
-    echo "  --help, -h        Show this help"
+    echo "Commands:"
+    echo "  --quick, -q        Quick setup (Paper, latest)"
+    echo "  --purpur, -p       Quick setup with Purpur"
+    echo "  --geyser, -g       Add Geyser + Floodgate"
+    echo "  --ngrok            Setup ngrok tunneling"
+    echo "  --playit           Setup playit.gg tunneling"
+    echo "  --java [17|21]     Install Java version"
+    echo "  --start, -s        Start server"
+    echo "  --background, -b   Start in background"
+    echo "  --status           Show status"
+    echo "  --help, -h         Show this help"
     echo ""
     echo "Run without arguments for interactive menu"
 }
 
-quick_purpur_setup() {
-    log_info "Quick Purpur setup..."
+quick_purpur() {
+    print_banner
+    log_step "Quick Setup - Purpur"
+    separator
+    
+    check_internet
+    ensure_java
+    
     SERVER_TYPE="purpur"
+    GAMEMODE="survival"
+    DIFFICULTY="normal"
     
     log_info "Fetching latest Purpur version..."
     local versions=$(get_purpur_versions)
     SELECTED_VERSION=$(echo "$versions" | tail -1)
+    [ -z "$SELECTED_VERSION" ] && { log_error "Failed to get version"; exit 1; }
     
-    if [ -z "$SELECTED_VERSION" ]; then
-        log_error "Failed to get version"
-        exit 1
-    fi
-    log_info "Using version: $SELECTED_VERSION"
+    local build=$(get_purpur_build "$SELECTED_VERSION")
+    [ -z "$build" ] || [ "$build" = "null" ] && { log_error "Failed to get build"; exit 1; }
     
-    local build=$(get_purpur_latest_build "$SELECTED_VERSION")
-    if [ -z "$build" ] || [ "$build" = "null" ]; then
-        log_error "Failed to get build"
-        exit 1
-    fi
-    log_info "Build: $build"
-    
-    setup_server
+    setup_server_files
     download_purpur "$SELECTED_VERSION" "$build"
     create_start_script
-    create_screen_script
-    optimize_for_mobile
+    optimize_mobile
     
-    show_info_and_start
+    show_completion
+    cd "$SERVER_DIR" && ./start.sh
 }
+
+# ─────────────────────────────────────────────────────────────────────
+# Entry Point
+# ─────────────────────────────────────────────────────────────────────
 
 case "$1" in
     --quick|-q)
@@ -628,21 +1031,37 @@ case "$1" in
     --purpur|-p)
         check_environment
         install_dependencies
-        quick_purpur_setup
+        quick_purpur
+        ;;
+    --geyser|-g)
+        check_environment
+        add_geyser
+        ;;
+    --ngrok)
+        check_environment
+        install_dependencies
+        [ -f "$SERVER_DIR/plugins/Geyser-Spigot.jar" ] && ENABLE_GEYSER=true
+        setup_ngrok
+        ;;
+    --playit)
+        check_environment
+        install_dependencies
+        [ -f "$SERVER_DIR/plugins/Geyser-Spigot.jar" ] && ENABLE_GEYSER=true
+        setup_playit
+        ;;
+    --java)
+        check_environment
+        apt update -y &>/dev/null
+        [ -n "$2" ] && install_java "$2" || select_java
         ;;
     --start|-s)
-        if [ -f "$SERVER_DIR/start.sh" ]; then
-            cd "$SERVER_DIR" && ./start.sh
-        else
-            log_error "Server not found. Run setup first."
-        fi
+        [ -f "$SERVER_DIR/start.sh" ] && { cd "$SERVER_DIR"; ./start.sh; } || log_error "Server not installed!"
         ;;
     --background|-b)
-        if [ -f "$SERVER_DIR/run-background.sh" ]; then
-            cd "$SERVER_DIR" && ./run-background.sh
-        else
-            log_error "Server not found. Run setup first."
-        fi
+        [ -f "$SERVER_DIR/start-background.sh" ] && { cd "$SERVER_DIR"; ./start-background.sh; } || log_error "Server not installed!"
+        ;;
+    --status)
+        show_status
         ;;
     --help|-h)
         show_help
@@ -651,7 +1070,7 @@ case "$1" in
         main_menu
         ;;
     *)
-        log_error "Unknown option: $1"
+        log_error "Unknown: $1"
         show_help
         exit 1
         ;;
