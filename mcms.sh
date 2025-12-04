@@ -65,7 +65,7 @@ print_banner() {
     echo "╔═══════════════════════════════════════════════════════════╗"
     echo "║              MCMS - Minecraft Mobile Server               ║"
     echo "║         Paper • Purpur • Folia • Geyser • playit          ║"
-    echo "║                    v${MCMS_VERSION}                                    ║"
+    echo "║                    v${MCMS_VERSION}                       ║"
     echo "╚═══════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 }
