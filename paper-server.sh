@@ -2,7 +2,7 @@
 
 # ═══════════════════════════════════════════════════════════════════
 # Minecraft Server Setup (Paper/Purpur) for Termux Ubuntu proot
-# Features: Geyser, Floodgate, ngrok, playit.gg, auto-setup
+# Features: Geyser, Floodgate, playit.gg, auto-setup
 # ═══════════════════════════════════════════════════════════════════
 
 set -e
@@ -28,8 +28,8 @@ GAMEMODE="survival"
 DIFFICULTY="normal"
 JAVA_VERSION="21"
 ENABLE_GEYSER=false
-ENABLE_NGROK=false
 ENABLE_PLAYIT=false
+PLAYIT_CONFIGURED=false
 JAVA_PORT=25565
 BEDROCK_PORT=19132
 ONLINE_MODE=false
@@ -323,117 +323,6 @@ select_geyser() {
 }
 
 # ─────────────────────────────────────────────────────────────────────
-# Port Forwarding - ngrok
-# ─────────────────────────────────────────────────────────────────────
-
-install_ngrok() {
-    log_step "Installing ngrok..."
-    
-    local arch=$(uname -m)
-    local ngrok_url=""
-    
-    case $arch in
-        aarch64) ngrok_url="https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-arm64.tgz" ;;
-        armv7l)  ngrok_url="https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-arm.tgz" ;;
-        x86_64)  ngrok_url="https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz" ;;
-        *)       log_error "Unsupported arch: $arch"; return 1 ;;
-    esac
-    
-    wget -q --show-progress -O /tmp/ngrok.tgz "$ngrok_url"
-    tar -xzf /tmp/ngrok.tgz -C /usr/local/bin
-    rm /tmp/ngrok.tgz
-    chmod +x /usr/local/bin/ngrok
-    
-    log_success "ngrok installed!"
-}
-
-setup_ngrok() {
-    if ! command -v ngrok &>/dev/null; then
-        install_ngrok
-    fi
-    
-    # Ensure server directory exists
-    mkdir -p "$SERVER_DIR"
-    
-    echo ""
-    echo -e "${CYAN}ngrok Setup:${NC}"
-    separator
-    echo -e "  1. Go to ${GREEN}https://ngrok.com${NC} and create free account"
-    echo -e "  2. Copy your authtoken from dashboard"
-    echo ""
-    read -p "Enter ngrok authtoken (or press Enter to skip): " authtoken
-    
-    if [ -n "$authtoken" ]; then
-        ngrok config add-authtoken "$authtoken"
-        log_success "ngrok authtoken configured!"
-    else
-        log_warn "No authtoken - you'll need to run 'ngrok config add-authtoken YOUR_TOKEN' later"
-    fi
-    
-    # Always create the ngrok start script
-    log_step "Creating ngrok start script..."
-    
-    cat > "$SERVER_DIR/start-ngrok.sh" << 'NGROKSCRIPT'
-#!/bin/bash
-cd "$(dirname "$0")"
-
-JAVA_PORT=25565
-BEDROCK_PORT=19132
-
-echo "════════════════════════════════════════════"
-echo "  Starting ngrok tunnel..."
-echo "════════════════════════════════════════════"
-echo ""
-
-# Check if ngrok is configured
-if ! ngrok config check &>/dev/null; then
-    echo "ngrok not configured! Run:"
-    echo "  ngrok config add-authtoken YOUR_TOKEN"
-    echo ""
-    echo "Get your token at: https://dashboard.ngrok.com/get-started/your-authtoken"
-    exit 1
-fi
-
-# Start Java tunnel
-ngrok tcp $JAVA_PORT &
-NGROK_PID=$!
-
-sleep 4
-
-# Get tunnel info
-TUNNEL_URL=$(curl -s http://localhost:4040/api/tunnels 2>/dev/null | grep -o '"public_url":"[^"]*' | head -1 | cut -d'"' -f4)
-
-echo ""
-echo -e "\033[0;32m════════════════════════════════════════════\033[0m"
-echo -e "\033[0;32m  ngrok Tunnel Active!\033[0m"
-echo -e "\033[0;32m════════════════════════════════════════════\033[0m"
-echo ""
-
-if [ -n "$TUNNEL_URL" ]; then
-    # Remove tcp:// prefix for display
-    CONNECT_ADDR="${TUNNEL_URL#tcp://}"
-    echo -e "  Java Edition: \033[1;33m$CONNECT_ADDR\033[0m"
-else
-    echo "  Could not get tunnel URL. Check http://localhost:4040"
-fi
-
-echo ""
-echo -e "\033[0;33m  Note: Free ngrok = 1 tunnel only\033[0m"
-echo -e "\033[0;33m  For Bedrock, use playit.gg instead!\033[0m"
-echo ""
-echo "Press Ctrl+C to stop"
-echo ""
-
-wait $NGROK_PID
-NGROKSCRIPT
-
-    chmod +x "$SERVER_DIR/start-ngrok.sh"
-    log_success "Created: $SERVER_DIR/start-ngrok.sh"
-    ENABLE_NGROK=true
-}
-
-
-# ─────────────────────────────────────────────────────────────────────
 # Port Forwarding - playit.gg
 # ─────────────────────────────────────────────────────────────────────
 
@@ -456,6 +345,11 @@ install_playit() {
     log_success "playit.gg installed!"
 }
 
+check_playit_configured() {
+    # Check if playit has been configured (has a toml config)
+    [ -f "$HOME/.config/playit/playit.toml" ] || [ -f "/root/.config/playit/playit.toml" ]
+}
+
 setup_playit() {
     if ! command -v playit &>/dev/null; then
         install_playit
@@ -470,16 +364,18 @@ setup_playit() {
     echo -e "  ${GREEN}playit.gg${NC} is FREE and supports both Java & Bedrock!"
     echo ""
     echo -e "  ${YELLOW}How it works:${NC}"
-    echo -e "  1. Run the start-playit.sh script"
+    echo -e "  1. Run playit setup (first time only)"
     echo -e "  2. Open the link shown in browser"
     echo -e "  3. Create account and claim your agent"
     echo -e "  4. Add tunnels in the web dashboard:"
     echo -e "     - Java: TCP port ${GREEN}$JAVA_PORT${NC}"
     [ "$ENABLE_GEYSER" = true ] && echo -e "     - Bedrock: UDP port ${GREEN}$BEDROCK_PORT${NC}"
     echo ""
+    echo -e "  ${YELLOW}After setup, playit will auto-start with server!${NC}"
+    echo ""
     
     # Create playit start script
-    log_step "Creating playit start script..."
+    log_step "Creating playit scripts..."
     
     cat > "$SERVER_DIR/start-playit.sh" << 'PLAYITSCRIPT'
 #!/bin/bash
@@ -498,7 +394,7 @@ echo "  4. Add tunnels in dashboard:"
 echo "     - Minecraft Java: TCP port 25565"
 echo "     - Minecraft Bedrock: UDP port 19132"
 echo ""
-echo "Your public address will show in the dashboard!"
+echo "Your public address will show in the playit.gg dashboard!"
 echo ""
 echo "Press Ctrl+C to stop"
 echo ""
@@ -514,44 +410,61 @@ PLAYITSCRIPT
 cd "$(dirname "$0")"
 
 # Check if already running
-if screen -list | grep -q "playit"; then
+if screen -list | grep -q "\.playit"; then
     echo "playit is already running!"
     echo "Attach with: screen -r playit"
-    exit 1
+    exit 0
 fi
 
+echo "Starting playit.gg in background..."
 screen -dmS playit playit
-echo ""
-echo "════════════════════════════════════════════"
-echo "  playit.gg started in background!"
-echo "════════════════════════════════════════════"
-echo ""
-echo "Commands:"
-echo "  Attach:  screen -r playit"
-echo "  Detach:  Ctrl+A then D"
-echo "  Stop:    Ctrl+C in attached screen"
-echo ""
-echo "First time? Attach and follow the link to setup!"
-echo ""
+
+sleep 2
+
+if screen -list | grep -q "\.playit"; then
+    echo ""
+    echo "════════════════════════════════════════════"
+    echo "  playit.gg started in background!"
+    echo "════════════════════════════════════════════"
+    echo ""
+    echo "Commands:"
+    echo "  Attach:  screen -r playit"
+    echo "  Detach:  Ctrl+A then D"
+    echo "  Stop:    Ctrl+C in attached screen"
+    echo ""
+    echo "Your public IP is in the playit.gg dashboard!"
+    echo ""
+else
+    echo "Failed to start playit. Run ./start-playit.sh to see errors."
+    exit 1
+fi
 PLAYITBG
 
     chmod +x "$SERVER_DIR/start-playit-background.sh"
-    log_success "Created: $SERVER_DIR/start-playit.sh"
-    log_success "Created: $SERVER_DIR/start-playit-background.sh"
+    log_success "Created playit scripts"
     
     ENABLE_PLAYIT=true
     
-    read -p "Run playit setup now? (y/n) [default: n]: " run_now
-    run_now=${run_now:-n}
-    
-    if [[ "$run_now" =~ ^[Yy]$ ]]; then
-        echo ""
-        log_info "Starting playit... Follow the instructions!"
-        echo ""
-        playit
+    # Check if already configured
+    if check_playit_configured; then
+        log_info "playit.gg already configured!"
+        PLAYIT_CONFIGURED=true
     else
         echo ""
-        log_info "Run './start-playit.sh' later to setup tunnels"
+        read -p "Run playit setup now? (y/n) [default: y]: " run_now
+        run_now=${run_now:-y}
+        
+        if [[ "$run_now" =~ ^[Yy]$ ]]; then
+            echo ""
+            log_info "Starting playit... Follow the instructions!"
+            log_info "After setup, press Ctrl+C to continue"
+            echo ""
+            playit
+            PLAYIT_CONFIGURED=true
+        else
+            echo ""
+            log_info "Run './start-playit.sh' to setup tunnels later"
+        fi
     fi
 }
 
@@ -564,17 +477,13 @@ select_port_forwarding() {
     echo -e "${CYAN}Port Forwarding (Play from anywhere):${NC}"
     separator
     echo -e "  ${GREEN}1${NC}) None (LAN only)"
-    echo -e "  ${GREEN}2${NC}) ngrok (free, 1 tunnel)"
-    echo -e "  ${GREEN}3${NC}) playit.gg (free, unlimited) ${YELLOW}[recommended]${NC}"
-    echo -e "  ${GREEN}4${NC}) Both ngrok + playit"
+    echo -e "  ${GREEN}2${NC}) playit.gg (free, unlimited) ${YELLOW}[recommended]${NC}"
     echo ""
     read -p "Select [default: 1]: " choice
     
     case $choice in
-        2) setup_ngrok ;;
-        3) setup_playit ;;
-        4) setup_ngrok; setup_playit ;;
-        *) log_info "Skipping port forwarding (LAN only)" ;;
+        2) setup_playit ;;
+        *) log_info "LAN only mode" ;;
     esac
 }
 
@@ -985,15 +894,24 @@ show_completion() {
         echo -e "  Bedrock Port: ${GREEN}$BEDROCK_PORT${NC}"
     fi
     
+    if [ "$ENABLE_PLAYIT" = true ]; then
+        echo ""
+        echo -e "${CYAN}Port Forwarding:${NC} ${GREEN}playit.gg${NC}"
+        if [ "$PLAYIT_CONFIGURED" = true ]; then
+            echo -e "  Status: ${GREEN}Configured${NC}"
+            echo -e "  ${YELLOW}Check playit.gg dashboard for your public IP!${NC}"
+        else
+            echo -e "  Status: ${YELLOW}Not configured yet${NC}"
+            echo -e "  Run ${GREEN}./start-playit.sh${NC} to setup"
+        fi
+    fi
+    
     echo ""
     echo -e "${CYAN}Commands (run from this directory):${NC}"
     echo -e "  Start:        ${GREEN}./start.sh${NC}"
     echo -e "  Background:   ${GREEN}./start-background.sh${NC}"
     echo -e "  Attach:       ${GREEN}screen -r minecraft${NC}"
     
-    if [ "$ENABLE_NGROK" = true ]; then
-        echo -e "  ngrok:        ${GREEN}./start-ngrok.sh${NC}"
-    fi
     if [ "$ENABLE_PLAYIT" = true ]; then
         echo -e "  playit:       ${GREEN}./start-playit.sh${NC}"
         echo -e "  playit (bg):  ${GREEN}./start-playit-background.sh${NC}"
@@ -1001,8 +919,11 @@ show_completion() {
     
     echo ""
     echo -e "${CYAN}Connect:${NC}"
-    echo -e "  Java:    ${GREEN}localhost:$JAVA_PORT${NC}"
+    echo -e "  LAN:     ${GREEN}localhost:$JAVA_PORT${NC}"
     [ "$ENABLE_GEYSER" = true ] && echo -e "  Bedrock: ${GREEN}localhost:$BEDROCK_PORT${NC}"
+    if [ "$ENABLE_PLAYIT" = true ]; then
+        echo -e "  Remote:  ${YELLOW}See playit.gg dashboard for public IP${NC}"
+    fi
     echo ""
     echo -e "${CYAN}Current directory:${NC} ${GREEN}$(pwd)${NC}"
     echo ""
@@ -1145,7 +1066,7 @@ add_geyser() {
 
 setup_tunnels() {
     print_banner
-    log_step "Port Forwarding Setup"
+    log_step "playit.gg Setup"
     separator
     
     # Ensure server directory exists
@@ -1157,13 +1078,13 @@ setup_tunnels() {
     echo -e "${CYAN}Scripts will be created in:${NC} $SERVER_DIR"
     echo ""
     
-    select_port_forwarding
+    setup_playit
     
     echo ""
-    if [ "$ENABLE_NGROK" = true ] || [ "$ENABLE_PLAYIT" = true ]; then
+    if [ "$ENABLE_PLAYIT" = true ]; then
         echo -e "${GREEN}Scripts created:${NC}"
-        [ -f "$SERVER_DIR/start-ngrok.sh" ] && echo -e "  - ${GREEN}$SERVER_DIR/start-ngrok.sh${NC}"
         [ -f "$SERVER_DIR/start-playit.sh" ] && echo -e "  - ${GREEN}$SERVER_DIR/start-playit.sh${NC}"
+        [ -f "$SERVER_DIR/start-playit-background.sh" ] && echo -e "  - ${GREEN}$SERVER_DIR/start-playit-background.sh${NC}"
         echo ""
     fi
 }
@@ -1192,8 +1113,15 @@ show_status() {
         echo -e "  Server:   ${RED}Not installed${NC}"
     fi
     
-    command -v ngrok &>/dev/null && echo -e "  ngrok:    ${GREEN}Installed${NC}" || echo -e "  ngrok:    ${YELLOW}Not installed${NC}"
-    command -v playit &>/dev/null && echo -e "  playit:   ${GREEN}Installed${NC}" || echo -e "  playit:   ${YELLOW}Not installed${NC}"
+    if command -v playit &>/dev/null; then
+        if check_playit_configured; then
+            echo -e "  playit:   ${GREEN}Configured${NC}"
+        else
+            echo -e "  playit:   ${YELLOW}Installed (not configured)${NC}"
+        fi
+    else
+        echo -e "  playit:   ${YELLOW}Not installed${NC}"
+    fi
     
     echo ""
 }
@@ -1208,10 +1136,10 @@ main_menu() {
     
     echo -e "${CYAN}Options:${NC}"
     separator
-    echo -e "  ${GREEN}1${NC}) Quick Setup (Paper, latest, defaults)"
+    echo -e "  ${GREEN}1${NC}) Quick Setup (Paper, latest, LAN only)"
     echo -e "  ${GREEN}2${NC}) Custom Setup (choose everything)"
     echo -e "  ${GREEN}3${NC}) Add Geyser + Floodgate"
-    echo -e "  ${GREEN}4${NC}) Setup Port Forwarding"
+    echo -e "  ${GREEN}4${NC}) Setup playit.gg (remote access)"
     echo -e "  ${GREEN}5${NC}) Install/Change Java"
     echo -e "  ${GREEN}6${NC}) Update Server"
     echo -e "  ${GREEN}7${NC}) Start Server"
@@ -1258,10 +1186,9 @@ show_help() {
     echo "Usage: $0 [command]"
     echo ""
     echo "Commands:"
-    echo "  --quick, -q        Quick setup (Paper, latest)"
+    echo "  --quick, -q        Quick setup (Paper, latest, LAN only)"
     echo "  --purpur, -p       Quick setup with Purpur"
     echo "  --geyser, -g       Add Geyser + Floodgate"
-    echo "  --ngrok            Setup ngrok tunneling"
     echo "  --playit           Setup playit.gg tunneling"
     echo "  --java [17|21]     Install Java version"
     echo "  --start, -s        Start server"
@@ -1327,12 +1254,6 @@ case "$1" in
     --geyser|-g)
         check_environment
         add_geyser
-        ;;
-    --ngrok)
-        check_environment
-        install_dependencies
-        [ -f "$SERVER_DIR/plugins/Geyser-Spigot.jar" ] && ENABLE_GEYSER=true
-        setup_ngrok
         ;;
     --playit)
         check_environment
