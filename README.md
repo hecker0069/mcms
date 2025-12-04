@@ -17,6 +17,7 @@ One-command Minecraft server setup for Android via Termux.
 ```bash
 # 1. Install Ubuntu in Termux
 git clone https://github.com/hecker0069/mcms/blob/main/ubuntu-termux.sh
+cd mcms
 chmod +x ubuntu-termux.sh
 ./ubuntu-termux.sh --quick
 
@@ -25,6 +26,7 @@ proot-distro login ubuntu
 
 # 3. Run MCMS
 git clone https://github.com/hecker0069/mcms
+cd mcms
 chmod +x mcms.sh
 ./mcms.sh
 ```
