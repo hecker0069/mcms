@@ -681,21 +681,54 @@ STARTSCRIPT
     chmod +x "$SERVER_DIR/start.sh"
     
     # Background script
-    cat > "$SERVER_DIR/start-background.sh" << 'EOF'
+    cat > "$SERVER_DIR/start-background.sh" << 'BGSCRIPT'
 #!/bin/bash
 cd "$(dirname "$0")"
-screen -dmS minecraft ./start.sh
+
+# Check if screen is installed
+if ! command -v screen &>/dev/null; then
+    echo "Error: screen is not installed!"
+    echo "Install with: apt install screen"
+    exit 1
+fi
+
+# Check if already running
+if screen -list | grep -q "\.minecraft"; then
+    echo ""
+    echo "Server is already running!"
+    echo "Attach with: screen -r minecraft"
+    echo ""
+    exit 1
+fi
+
+# Start server in screen session
 echo ""
-echo "════════════════════════════════════════════════"
-echo "  Server started in background!"
-echo "════════════════════════════════════════════════"
-echo ""
-echo "Commands:"
-echo "  Attach to console:  screen -r minecraft"
-echo "  Detach from console: Ctrl+A then D"
-echo "  Stop server:        Type 'stop' in console"
-echo ""
-EOF
+echo "Starting Minecraft server in background..."
+screen -dmS minecraft bash -c './start.sh; exec bash'
+
+# Wait a moment and check if it started
+sleep 2
+
+if screen -list | grep -q "\.minecraft"; then
+    echo ""
+    echo "════════════════════════════════════════════════"
+    echo "  Server started in background!"
+    echo "════════════════════════════════════════════════"
+    echo ""
+    echo "Commands:"
+    echo "  Attach to console:  screen -r minecraft"
+    echo "  Detach from console: Ctrl+A then D"
+    echo "  Stop server:        Type 'stop' in console"
+    echo "  List screens:       screen -ls"
+    echo ""
+else
+    echo ""
+    echo "Error: Failed to start server!"
+    echo "Try running ./start.sh directly to see errors."
+    echo ""
+    exit 1
+fi
+BGSCRIPT
     chmod +x "$SERVER_DIR/start-background.sh"
     
     log_success "Start scripts created"
