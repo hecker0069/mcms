@@ -23,6 +23,7 @@ chmod +x ubuntu-termux.sh
 proot-distro login ubuntu
 
 # 3. Run MCMS
+git clone https://github.com/hecker0069/mcms
 chmod +x mcms.sh
 ./mcms.sh
 ```
