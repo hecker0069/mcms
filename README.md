@@ -1,44 +1,54 @@
 # MCMS - Minecraft Mobile Server
 
-One-command Minecraft server setup for Android via Termux.
+Run a Minecraft server on your Android phone.
 
-**Repository:** https://github.com/mukulx/MCMS
+## Installation
+
+### Step 1: Setup Termux
+
+```bash
+pkg install proot-distro curl
+proot-distro install ubuntu
+```
+
+### Step 2: Download MCMS
+
+```bash
+proot-distro login ubuntu
+mkdir -p ~/mcms && cd ~/mcms
+curl -sL https://raw.githubusercontent.com/mukulx/MCMS/main/mcms.sh -o mcms.sh
+chmod +x mcms.sh
+```
+
+### Step 3: Run MCMS
+
+```bash
+./mcms.sh
+```
+
+## Run Again
+
+```bash
+proot-distro login ubuntu
+cd ~/mcms && ./mcms.sh
+```
+
+## Update MCMS
+
+```bash
+proot-distro login ubuntu
+cd ~/mcms
+curl -sL https://raw.githubusercontent.com/mukulx/MCMS/main/mcms.sh -o mcms.sh
+```
 
 ## Features
 
 - **Server Software:** Paper, Purpur, Folia
 - **Bedrock Support:** Geyser + Floodgate
-- **Remote Access:** playit.gg integration
+- **Remote Access:** playit.gg (free)
 - **Auto Setup:** Java, dependencies, optimizations
-- **Mobile Optimized:** Aikar's flags, low RAM configs
 
-## Quick Start
-
-```bash
-# 1. Install Ubuntu in Termux
-git clone https://github.com/hecker0069/mcms/blob/main/ubuntu-termux.sh
-cd mcms
-chmod +x ubuntu-termux.sh
-./ubuntu-termux.sh --quick
-
-# 2. Enter Ubuntu
-proot-distro login ubuntu
-
-# 3. Run MCMS
-git clone https://github.com/hecker0069/mcms
-cd mcms
-chmod +x mcms.sh
-./mcms.sh
-```
-
-## Scripts
-
-| Script | Description |
-|--------|-------------|
-| `ubuntu-termux.sh` | Install Ubuntu proot in Termux |
-| `mcms.sh` | Minecraft server setup (run inside Ubuntu) |
-
-## MCMS Commands
+## Commands
 
 ```bash
 ./mcms.sh              # Interactive menu
@@ -54,11 +64,10 @@ chmod +x mcms.sh
 ## Requirements
 
 - Android device (aarch64)
-- Termux app
+- Termux from F-Droid
 - ~1.5GB storage
 - 2GB+ RAM recommended
 
 ## Documentation
 
-- [Ubuntu Setup Guide](README-ubuntu.md)
-- [Server Setup Guide](README-mcms.md)
+See [README-mcms.md](README-mcms.md) for detailed documentation.
