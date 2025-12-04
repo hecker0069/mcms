@@ -1,11 +1,19 @@
 #!/bin/bash
 
 # ═══════════════════════════════════════════════════════════════════
-# Minecraft Server Setup (Paper/Purpur) for Termux Ubuntu proot
-# Features: Geyser, Floodgate, playit.gg, auto-setup
+# MCMS - Minecraft Mobile Server
+# https://github.com/mukulx/MCMS
+# 
+# One-command Minecraft server setup for Termux Ubuntu proot
+# Supports: Paper, Purpur, Folia, Geyser, Floodgate, playit.gg
 # ═══════════════════════════════════════════════════════════════════
 
 set -e
+
+# Version
+MCMS_VERSION="1.0.0"
+MCMS_REPO="https://github.com/mukulx/MCMS"
+MCMS_RAW="https://raw.githubusercontent.com/mukulx/MCMS/main/mcms.sh"
 
 # ─────────────────────────────────────────────────────────────────────
 # Configuration
@@ -17,6 +25,7 @@ SERVER_DIR="$SCRIPT_DIR/minecraft-server"
 # APIs
 PAPER_API="https://api.papermc.io/v2"
 PURPUR_API="https://api.purpurmc.org/v2/purpur"
+FOLIA_API="https://api.papermc.io/v2"
 GEYSER_API="https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest/downloads/spigot"
 FLOODGATE_API="https://download.geysermc.org/v2/projects/floodgate/versions/latest/builds/latest/downloads/spigot"
 
@@ -54,8 +63,9 @@ print_banner() {
     clear
     echo -e "${CYAN}${BOLD}"
     echo "╔═══════════════════════════════════════════════════════════╗"
-    echo "║         Minecraft Server Setup for Termux                 ║"
-    echo "║         Paper • Purpur • Geyser • Floodgate               ║"
+    echo "║              MCMS - Minecraft Mobile Server               ║"
+    echo "║         Paper • Purpur • Folia • Geyser • playit          ║"
+    echo "║                    v${MCMS_VERSION}                                    ║"
     echo "╚═══════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 }
@@ -88,6 +98,71 @@ check_internet() {
     if ! curl -s --head --connect-timeout 5 https://google.com > /dev/null; then
         log_error "No internet connection!"
         exit 1
+    fi
+}
+
+check_mcms_update() {
+    log_info "Checking for MCMS updates..."
+    
+    local remote_version=$(curl -sL "$MCMS_RAW" 2>/dev/null | grep '^MCMS_VERSION=' | head -1 | cut -d'"' -f2)
+    
+    if [ -z "$remote_version" ]; then
+        log_warn "Could not check for updates"
+        return 1
+    fi
+    
+    if [ "$remote_version" != "$MCMS_VERSION" ]; then
+        echo ""
+        echo -e "${GREEN}═══════════════════════════════════════════════${NC}"
+        echo -e "${GREEN}  New MCMS version available: ${YELLOW}v$remote_version${NC}"
+        echo -e "${GREEN}  Current version: v$MCMS_VERSION${NC}"
+        echo -e "${GREEN}═══════════════════════════════════════════════${NC}"
+        echo ""
+        echo -e "  Update with:"
+        echo -e "  ${CYAN}curl -sL $MCMS_RAW -o mcms.sh && chmod +x mcms.sh${NC}"
+        echo ""
+        echo -e "  Or visit: ${CYAN}$MCMS_REPO${NC}"
+        echo ""
+        return 0
+    else
+        log_success "MCMS is up to date (v$MCMS_VERSION)"
+        return 1
+    fi
+}
+
+update_mcms() {
+    print_banner
+    log_step "Updating MCMS..."
+    separator
+    
+    check_internet
+    
+    local script_path="$0"
+    local backup_path="${script_path}.backup"
+    
+    # Backup current script
+    cp "$script_path" "$backup_path"
+    log_info "Backup created: $backup_path"
+    
+    # Download new version
+    if curl -sL "$MCMS_RAW" -o "$script_path.new"; then
+        # Verify download
+        if grep -q "MCMS_VERSION" "$script_path.new"; then
+            mv "$script_path.new" "$script_path"
+            chmod +x "$script_path"
+            log_success "MCMS updated successfully!"
+            echo ""
+            echo -e "${YELLOW}Please restart MCMS to use the new version${NC}"
+            echo ""
+            exit 0
+        else
+            rm -f "$script_path.new"
+            log_error "Download verification failed"
+            return 1
+        fi
+    else
+        log_error "Download failed"
+        return 1
     fi
 }
 
@@ -218,17 +293,49 @@ download_purpur() {
     log_success "Purpur downloaded!"
 }
 
+# Folia - Multi-threaded Paper fork
+get_folia_versions() {
+    curl -sL "$FOLIA_API/projects/folia" | jq -r '.versions[]' 2>/dev/null | tail -10
+}
+
+get_folia_build() {
+    local v=$1
+    curl -sL "$FOLIA_API/projects/folia/versions/$v/builds" | jq -r '.builds[-1].build' 2>/dev/null
+}
+
+download_folia() {
+    local version=$1 build=$2
+    local file="folia-$version-$build.jar"
+    local url="$FOLIA_API/projects/folia/versions/$version/builds/$build/downloads/$file"
+    
+    log_step "Downloading Folia $version (build $build)..."
+    wget -q --show-progress -O "$SERVER_DIR/server.jar" "$url" || return 1
+    log_success "Folia downloaded!"
+}
+
 get_versions() {
-    [ "$SERVER_TYPE" = "purpur" ] && get_purpur_versions || get_paper_versions
+    case "$SERVER_TYPE" in
+        purpur) get_purpur_versions ;;
+        folia) get_folia_versions ;;
+        *) get_paper_versions ;;
+    esac
 }
 
 get_build() {
-    [ "$SERVER_TYPE" = "purpur" ] && get_purpur_build "$1" || get_paper_build "$1"
+    case "$SERVER_TYPE" in
+        purpur) get_purpur_build "$1" ;;
+        folia) get_folia_build "$1" ;;
+        *) get_paper_build "$1" ;;
+    esac
 }
 
 download_server_jar() {
     local version=$1 build=$2
-    [ "$SERVER_TYPE" = "purpur" ] && download_purpur "$version" "$build" || download_paper "$version" "$build"
+    case "$SERVER_TYPE" in
+        purpur) download_purpur "$version" "$build" ;;
+        folia) download_folia "$version" "$build" ;;
+        *) download_paper "$version" "$build" ;;
+    esac
 }
 
 
@@ -668,13 +775,17 @@ select_server_type() {
     echo ""
     echo -e "${CYAN}Server Software:${NC}"
     separator
-    echo -e "  ${GREEN}1${NC}) Paper - Fast & optimized"
+    echo -e "  ${GREEN}1${NC}) Paper - Fast & optimized ${YELLOW}[recommended]${NC}"
     echo -e "  ${GREEN}2${NC}) Purpur - More features & customization"
+    echo -e "  ${GREEN}3${NC}) Folia - Multi-threaded (experimental)"
+    echo ""
+    echo -e "  ${YELLOW}Note: Folia requires plugins with Folia support${NC}"
     echo ""
     read -p "Select [default: 1]: " choice
     
     case $choice in
         2) SERVER_TYPE="purpur" ;;
+        3) SERVER_TYPE="folia" ;;
         *) SERVER_TYPE="paper" ;;
     esac
     log_info "Selected: ${SERVER_TYPE^}"
@@ -1141,9 +1252,10 @@ main_menu() {
     echo -e "  ${GREEN}3${NC}) Add Geyser + Floodgate"
     echo -e "  ${GREEN}4${NC}) Setup playit.gg (remote access)"
     echo -e "  ${GREEN}5${NC}) Install/Change Java"
-    echo -e "  ${GREEN}6${NC}) Update Server"
+    echo -e "  ${GREEN}6${NC}) Update Server JAR"
     echo -e "  ${GREEN}7${NC}) Start Server"
-    echo -e "  ${GREEN}8${NC}) Uninstall"
+    echo -e "  ${GREEN}8${NC}) Check for MCMS Updates"
+    echo -e "  ${GREEN}9${NC}) Uninstall"
     echo -e "  ${GREEN}0${NC}) Exit"
     echo ""
     read -p "Select: " choice
@@ -1165,6 +1277,16 @@ main_menu() {
             fi
             ;;
         8)
+            check_internet
+            if check_mcms_update; then
+                read -p "Update now? (y/n) [default: y]: " do_update
+                do_update=${do_update:-y}
+                [[ "$do_update" =~ ^[Yy]$ ]] && update_mcms
+            fi
+            sleep 2
+            main_menu
+            ;;
+        9)
             echo ""
             read -p "Delete ALL server data? (type 'yes'): " confirm
             [ "$confirm" = "yes" ] && { rm -rf "$SERVER_DIR"; log_success "Uninstalled"; } || log_info "Cancelled"
@@ -1181,19 +1303,22 @@ main_menu() {
 # ─────────────────────────────────────────────────────────────────────
 
 show_help() {
-    echo "Minecraft Server Setup for Termux"
+    echo "MCMS - Minecraft Mobile Server v$MCMS_VERSION"
+    echo "$MCMS_REPO"
     echo ""
     echo "Usage: $0 [command]"
     echo ""
     echo "Commands:"
     echo "  --quick, -q        Quick setup (Paper, latest, LAN only)"
     echo "  --purpur, -p       Quick setup with Purpur"
+    echo "  --folia, -f        Quick setup with Folia"
     echo "  --geyser, -g       Add Geyser + Floodgate"
     echo "  --playit           Setup playit.gg tunneling"
     echo "  --java [17|21]     Install Java version"
     echo "  --start, -s        Start server"
     echo "  --background, -b   Start in background"
     echo "  --status           Show status"
+    echo "  --update           Check for MCMS updates"
     echo "  --help, -h         Show this help"
     echo ""
     echo "Run without arguments for interactive menu"
@@ -1236,6 +1361,46 @@ quick_purpur() {
     ./start.sh
 }
 
+quick_folia() {
+    print_banner
+    log_step "Quick Setup - Folia (Multi-threaded)"
+    separator
+    
+    echo -e "${YELLOW}Note: Folia is experimental and requires Folia-compatible plugins!${NC}"
+    echo ""
+    
+    check_internet
+    ensure_java
+    
+    # Set defaults
+    SERVER_TYPE="folia"
+    GAMEMODE="survival"
+    DIFFICULTY="normal"
+    ONLINE_MODE=false
+    WORLD_TYPE="normal"
+    LEVEL_TYPE="minecraft:normal"
+    RAM_SETTING="auto"
+    
+    log_info "Fetching latest Folia version..."
+    local versions=$(get_folia_versions)
+    SELECTED_VERSION=$(echo "$versions" | tail -1)
+    [ -z "$SELECTED_VERSION" ] && { log_error "Failed to get version"; exit 1; }
+    
+    local build=$(get_folia_build "$SELECTED_VERSION")
+    [ -z "$build" ] || [ "$build" = "null" ] && { log_error "Failed to get build"; exit 1; }
+    
+    setup_server_files
+    download_folia "$SELECTED_VERSION" "$build"
+    create_start_script
+    optimize_mobile
+    
+    show_completion
+    
+    echo -e "${CYAN}Starting server...${NC}"
+    echo ""
+    ./start.sh
+}
+
 # ─────────────────────────────────────────────────────────────────────
 # Entry Point
 # ─────────────────────────────────────────────────────────────────────
@@ -1250,6 +1415,11 @@ case "$1" in
         check_environment
         install_dependencies
         quick_purpur
+        ;;
+    --folia|-f)
+        check_environment
+        install_dependencies
+        quick_folia
         ;;
     --geyser|-g)
         check_environment
@@ -1274,6 +1444,18 @@ case "$1" in
         ;;
     --status)
         show_status
+        ;;
+    --update)
+        check_internet
+        if check_mcms_update; then
+            read -p "Update now? (y/n) [default: y]: " do_update
+            do_update=${do_update:-y}
+            [[ "$do_update" =~ ^[Yy]$ ]] && update_mcms
+        fi
+        ;;
+    --version|-v)
+        echo "MCMS v$MCMS_VERSION"
+        echo "$MCMS_REPO"
         ;;
     --help|-h)
         show_help
