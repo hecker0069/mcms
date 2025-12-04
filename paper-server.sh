@@ -482,6 +482,7 @@ setup_playit() {
 #!/bin/bash
 cd "$(dirname "$0")"
 
+echo ""
 echo "════════════════════════════════════════════"
 echo "  Starting playit.gg tunnel"
 echo "════════════════════════════════════════════"
@@ -503,7 +504,37 @@ playit
 PLAYITSCRIPT
 
     chmod +x "$SERVER_DIR/start-playit.sh"
+    
+    # Create background playit script with screen
+    cat > "$SERVER_DIR/start-playit-background.sh" << 'PLAYITBG'
+#!/bin/bash
+cd "$(dirname "$0")"
+
+# Check if already running
+if screen -list | grep -q "playit"; then
+    echo "playit is already running!"
+    echo "Attach with: screen -r playit"
+    exit 1
+fi
+
+screen -dmS playit playit
+echo ""
+echo "════════════════════════════════════════════"
+echo "  playit.gg started in background!"
+echo "════════════════════════════════════════════"
+echo ""
+echo "Commands:"
+echo "  Attach:  screen -r playit"
+echo "  Detach:  Ctrl+A then D"
+echo "  Stop:    Ctrl+C in attached screen"
+echo ""
+echo "First time? Attach and follow the link to setup!"
+echo ""
+PLAYITBG
+
+    chmod +x "$SERVER_DIR/start-playit-background.sh"
     log_success "Created: $SERVER_DIR/start-playit.sh"
+    log_success "Created: $SERVER_DIR/start-playit-background.sh"
     
     ENABLE_PLAYIT=true
     
@@ -583,28 +614,44 @@ create_start_script() {
 #!/bin/bash
 cd "$(dirname "$0")"
 
+# ═══════════════════════════════════════════════════════════════
+# Minecraft Server Start Script with Aikar's Flags
+# ═══════════════════════════════════════════════════════════════
+
 # Auto RAM detection
-TOTAL_MEM=$(free -m | awk '/^Mem:/{print $2}')
-if [ $TOTAL_MEM -gt 4000 ]; then
-    XMX="2G"; XMS="1G"
-elif [ $TOTAL_MEM -gt 2000 ]; then
-    XMX="1G"; XMS="512M"
+TOTAL_MEM=$(free -m 2>/dev/null | awk '/^Mem:/{print $2}')
+TOTAL_MEM=${TOTAL_MEM:-2000}
+
+if [ "$TOTAL_MEM" -gt 4000 ] 2>/dev/null; then
+    XMX="2G"
+    XMS="1G"
+elif [ "$TOTAL_MEM" -gt 2000 ] 2>/dev/null; then
+    XMX="1G"
+    XMS="512M"
 else
-    XMX="512M"; XMS="256M"
+    XMX="512M"
+    XMS="256M"
 fi
 
-echo "════════════════════════════════════════"
-echo "  Starting Minecraft Server"
-echo "  RAM: ${XMS} - ${XMX}"
-echo "════════════════════════════════════════"
+echo ""
+echo "════════════════════════════════════════════════"
+echo "  Minecraft Server Starting"
+echo "  Memory: ${XMS} min / ${XMX} max"
+echo "  Using Aikar's optimized flags"
+echo "════════════════════════════════════════════════"
 echo ""
 
-java -Xmx${XMX} -Xms${XMS} \
+# Aikar's Flags - optimized for Minecraft servers
+# https://docs.papermc.io/paper/aikars-flags
+java \
+    -Xms${XMS} \
+    -Xmx${XMX} \
     -XX:+UseG1GC \
     -XX:+ParallelRefProcEnabled \
     -XX:MaxGCPauseMillis=200 \
     -XX:+UnlockExperimentalVMOptions \
     -XX:+DisableExplicitGC \
+    -XX:+AlwaysPreTouch \
     -XX:G1NewSizePercent=30 \
     -XX:G1MaxNewSizePercent=40 \
     -XX:G1HeapRegionSize=8M \
@@ -613,10 +660,12 @@ java -Xmx${XMX} -Xms${XMS} \
     -XX:G1MixedGCCountTarget=4 \
     -XX:InitiatingHeapOccupancyPercent=15 \
     -XX:G1MixedGCLiveThresholdPercent=90 \
+    -XX:G1RSetUpdatingPauseTimePercent=5 \
     -XX:SurvivorRatio=32 \
     -XX:+PerfDisableSharedMem \
     -XX:MaxTenuringThreshold=1 \
     -Dusing.aikars.flags=https://mcflags.emc.gs \
+    -Daikars.new.flags=true \
     -jar server.jar nogui
 STARTSCRIPT
     chmod +x "$SERVER_DIR/start.sh"
@@ -627,12 +676,14 @@ STARTSCRIPT
 cd "$(dirname "$0")"
 screen -dmS minecraft ./start.sh
 echo ""
-echo "Server started in background!"
+echo "════════════════════════════════════════════════"
+echo "  Server started in background!"
+echo "════════════════════════════════════════════════"
 echo ""
 echo "Commands:"
-echo "  Attach:  screen -r minecraft"
-echo "  Detach:  Ctrl+A then D"
-echo "  Stop:    Type 'stop' in console"
+echo "  Attach to console:  screen -r minecraft"
+echo "  Detach from console: Ctrl+A then D"
+echo "  Stop server:        Type 'stop' in console"
 echo ""
 EOF
     chmod +x "$SERVER_DIR/start-background.sh"
@@ -802,6 +853,7 @@ show_completion() {
     fi
     if [ "$ENABLE_PLAYIT" = true ]; then
         echo -e "  playit:       ${GREEN}./start-playit.sh${NC}"
+        echo -e "  playit (bg):  ${GREEN}./start-playit-background.sh${NC}"
     fi
     
     echo ""
