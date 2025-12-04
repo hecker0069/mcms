@@ -1,17 +1,26 @@
 # MCMS - Minecraft Mobile Server
 
-Run a Minecraft server on your Android phone.
+Run a full Minecraft server on your Android phone using Termux.
+
+## Features
+
+- **Paper, Purpur, Folia** - Choose your server software
+- **Geyser + Floodgate** - Let Bedrock players join
+- **playit.gg** - Free remote access from anywhere
+- **Auto Setup** - Java, optimizations, everything handled
+- **Mobile Optimized** - Aikar's flags, low RAM configs
 
 ## Installation
 
-### Step 1: Setup Termux
+### 1. Install Ubuntu in Termux
 
 ```bash
+pkg update && pkg upgrade
 pkg install proot-distro curl
 proot-distro install ubuntu
 ```
 
-### Step 2: Download MCMS
+### 2. Download MCMS
 
 ```bash
 proot-distro login ubuntu
@@ -20,20 +29,22 @@ curl -sL https://raw.githubusercontent.com/mukulx/MCMS/main/mcms.sh -o mcms.sh
 chmod +x mcms.sh
 ```
 
-### Step 3: Run MCMS
+### 3. Run
 
 ```bash
 ./mcms.sh
 ```
 
-## Run Again
+## Usage
+
+### Run MCMS
 
 ```bash
 proot-distro login ubuntu
 cd ~/mcms && ./mcms.sh
 ```
 
-## Update MCMS
+### Update MCMS
 
 ```bash
 proot-distro login ubuntu
@@ -41,33 +52,54 @@ cd ~/mcms
 curl -sL https://raw.githubusercontent.com/mukulx/MCMS/main/mcms.sh -o mcms.sh
 ```
 
-## Features
-
-- **Server Software:** Paper, Purpur, Folia
-- **Bedrock Support:** Geyser + Floodgate
-- **Remote Access:** playit.gg (free)
-- **Auto Setup:** Java, dependencies, optimizations
-
-## Commands
+### Start Server Directly
 
 ```bash
-./mcms.sh              # Interactive menu
-./mcms.sh --quick      # Quick Paper setup
-./mcms.sh --purpur     # Quick Purpur setup
-./mcms.sh --folia      # Quick Folia setup
-./mcms.sh --geyser     # Add Bedrock support
-./mcms.sh --playit     # Setup remote access
-./mcms.sh --start      # Start server
-./mcms.sh --update     # Check for updates
+proot-distro login ubuntu
+cd ~/mcms/minecraft-server && ./start.sh
 ```
+
+## CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `./mcms.sh` | Interactive menu |
+| `./mcms.sh --quick` | Quick Paper setup |
+| `./mcms.sh --purpur` | Quick Purpur setup |
+| `./mcms.sh --folia` | Quick Folia setup |
+| `./mcms.sh --geyser` | Add Bedrock support |
+| `./mcms.sh --playit` | Setup playit.gg |
+| `./mcms.sh --start` | Start server |
+| `./mcms.sh --background` | Start in background |
+| `./mcms.sh --status` | Show status |
+| `./mcms.sh --update` | Check for MCMS updates |
 
 ## Requirements
 
-- Android device (aarch64)
-- Termux from F-Droid
+- Android (aarch64)
+- Termux from [F-Droid](https://f-droid.org/packages/com.termux/)
 - ~1.5GB storage
 - 2GB+ RAM recommended
 
+## Server Types
+
+| Server | Description |
+|--------|-------------|
+| Paper | Fast, stable, most plugins work |
+| Purpur | Paper fork with extra features |
+| Folia | Multi-threaded, needs Folia plugins |
+
+## Ports
+
+| Port | Protocol | Use |
+|------|----------|-----|
+| 25565 | TCP | Java Edition |
+| 19132 | UDP | Bedrock Edition |
+
 ## Documentation
 
-See [README-mcms.md](README-mcms.md) for detailed documentation.
+See [README-mcms.md](README-mcms.md) for detailed setup guide.
+
+## License
+
+MIT
