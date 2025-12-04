@@ -349,60 +349,84 @@ setup_ngrok() {
         install_ngrok
     fi
     
+    # Ensure server directory exists
+    mkdir -p "$SERVER_DIR"
+    
     echo ""
     echo -e "${CYAN}ngrok Setup:${NC}"
     separator
     echo -e "  1. Go to ${GREEN}https://ngrok.com${NC} and create free account"
     echo -e "  2. Copy your authtoken from dashboard"
     echo ""
-    read -p "Enter ngrok authtoken: " authtoken
+    read -p "Enter ngrok authtoken (or press Enter to skip): " authtoken
     
     if [ -n "$authtoken" ]; then
         ngrok config add-authtoken "$authtoken"
-        log_success "ngrok configured!"
-        
-        # Create ngrok start script
-        cat > "$SERVER_DIR/start-ngrok.sh" << EOF
-#!/bin/bash
-echo "Starting ngrok tunnels..."
-echo ""
-
-# Java Edition tunnel
-ngrok tcp $JAVA_PORT --log=stdout > /tmp/ngrok-java.log 2>&1 &
-JAVA_PID=\$!
-sleep 3
-
-# Get Java tunnel URL
-JAVA_URL=\$(curl -s http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url' 2>/dev/null)
-
-echo -e "\033[0;32m═══════════════════════════════════════════\033[0m"
-echo -e "\033[0;32m  ngrok Tunnels Active!\033[0m"
-echo -e "\033[0;32m═══════════════════════════════════════════\033[0m"
-echo ""
-echo -e "  Java Edition: \033[0;33m\${JAVA_URL#tcp://}\033[0m"
-EOF
-
-        if [ "$ENABLE_GEYSER" = true ]; then
-            cat >> "$SERVER_DIR/start-ngrok.sh" << EOF
-
-# Bedrock tunnel (separate ngrok instance)
-echo ""
-echo -e "  \033[0;33mNote: Free ngrok only allows 1 tunnel.\033[0m"
-echo -e "  \033[0;33mFor Bedrock, use playit.gg instead!\033[0m"
-EOF
-        fi
-
-        cat >> "$SERVER_DIR/start-ngrok.sh" << 'EOF'
-
-echo ""
-echo "Press Ctrl+C to stop tunnels"
-wait
-EOF
-        chmod +x "$SERVER_DIR/start-ngrok.sh"
-        ENABLE_NGROK=true
+        log_success "ngrok authtoken configured!"
     else
-        log_warn "Skipped ngrok setup"
+        log_warn "No authtoken - you'll need to run 'ngrok config add-authtoken YOUR_TOKEN' later"
     fi
+    
+    # Always create the ngrok start script
+    log_step "Creating ngrok start script..."
+    
+    cat > "$SERVER_DIR/start-ngrok.sh" << 'NGROKSCRIPT'
+#!/bin/bash
+cd "$(dirname "$0")"
+
+JAVA_PORT=25565
+BEDROCK_PORT=19132
+
+echo "════════════════════════════════════════════"
+echo "  Starting ngrok tunnel..."
+echo "════════════════════════════════════════════"
+echo ""
+
+# Check if ngrok is configured
+if ! ngrok config check &>/dev/null; then
+    echo "ngrok not configured! Run:"
+    echo "  ngrok config add-authtoken YOUR_TOKEN"
+    echo ""
+    echo "Get your token at: https://dashboard.ngrok.com/get-started/your-authtoken"
+    exit 1
+fi
+
+# Start Java tunnel
+ngrok tcp $JAVA_PORT &
+NGROK_PID=$!
+
+sleep 4
+
+# Get tunnel info
+TUNNEL_URL=$(curl -s http://localhost:4040/api/tunnels 2>/dev/null | grep -o '"public_url":"[^"]*' | head -1 | cut -d'"' -f4)
+
+echo ""
+echo -e "\033[0;32m════════════════════════════════════════════\033[0m"
+echo -e "\033[0;32m  ngrok Tunnel Active!\033[0m"
+echo -e "\033[0;32m════════════════════════════════════════════\033[0m"
+echo ""
+
+if [ -n "$TUNNEL_URL" ]; then
+    # Remove tcp:// prefix for display
+    CONNECT_ADDR="${TUNNEL_URL#tcp://}"
+    echo -e "  Java Edition: \033[1;33m$CONNECT_ADDR\033[0m"
+else
+    echo "  Could not get tunnel URL. Check http://localhost:4040"
+fi
+
+echo ""
+echo -e "\033[0;33m  Note: Free ngrok = 1 tunnel only\033[0m"
+echo -e "\033[0;33m  For Bedrock, use playit.gg instead!\033[0m"
+echo ""
+echo "Press Ctrl+C to stop"
+echo ""
+
+wait $NGROK_PID
+NGROKSCRIPT
+
+    chmod +x "$SERVER_DIR/start-ngrok.sh"
+    log_success "Created: $SERVER_DIR/start-ngrok.sh"
+    ENABLE_NGROK=true
 }
 
 
@@ -434,43 +458,67 @@ setup_playit() {
         install_playit
     fi
     
+    # Ensure server directory exists
+    mkdir -p "$SERVER_DIR"
+    
     echo ""
     echo -e "${CYAN}playit.gg Setup:${NC}"
     separator
     echo -e "  ${GREEN}playit.gg${NC} is FREE and supports both Java & Bedrock!"
     echo ""
-    echo -e "  ${YELLOW}Steps:${NC}"
-    echo -e "  1. Run: ${GREEN}playit${NC}"
+    echo -e "  ${YELLOW}How it works:${NC}"
+    echo -e "  1. Run the start-playit.sh script"
     echo -e "  2. Open the link shown in browser"
     echo -e "  3. Create account and claim your agent"
-    echo -e "  4. Add tunnels for your ports:"
+    echo -e "  4. Add tunnels in the web dashboard:"
     echo -e "     - Java: TCP port ${GREEN}$JAVA_PORT${NC}"
     [ "$ENABLE_GEYSER" = true ] && echo -e "     - Bedrock: UDP port ${GREEN}$BEDROCK_PORT${NC}"
     echo ""
     
     # Create playit start script
-    cat > "$SERVER_DIR/start-playit.sh" << 'EOF'
-#!/bin/bash
-echo "Starting playit.gg tunnel..."
-echo ""
-echo "If first time, follow the link to claim your agent!"
-echo ""
-playit
-EOF
-    chmod +x "$SERVER_DIR/start-playit.sh"
+    log_step "Creating playit start script..."
     
-    read -p "Run playit setup now? (y/n) [default: y]: " run_now
-    run_now=${run_now:-y}
+    cat > "$SERVER_DIR/start-playit.sh" << 'PLAYITSCRIPT'
+#!/bin/bash
+cd "$(dirname "$0")"
+
+echo "════════════════════════════════════════════"
+echo "  Starting playit.gg tunnel"
+echo "════════════════════════════════════════════"
+echo ""
+echo "If this is your first time:"
+echo "  1. A link will appear - open it in browser"
+echo "  2. Create account / login"
+echo "  3. Claim this agent"
+echo "  4. Add tunnels in dashboard:"
+echo "     - Minecraft Java: TCP port 25565"
+echo "     - Minecraft Bedrock: UDP port 19132"
+echo ""
+echo "Your public address will show in the dashboard!"
+echo ""
+echo "Press Ctrl+C to stop"
+echo ""
+
+playit
+PLAYITSCRIPT
+
+    chmod +x "$SERVER_DIR/start-playit.sh"
+    log_success "Created: $SERVER_DIR/start-playit.sh"
+    
+    ENABLE_PLAYIT=true
+    
+    read -p "Run playit setup now? (y/n) [default: n]: " run_now
+    run_now=${run_now:-n}
     
     if [[ "$run_now" =~ ^[Yy]$ ]]; then
         echo ""
         log_info "Starting playit... Follow the instructions!"
         echo ""
         playit
+    else
+        echo ""
+        log_info "Run './start-playit.sh' later to setup tunnels"
     fi
-    
-    ENABLE_PLAYIT=true
-    log_success "playit.gg ready!"
 }
 
 # ─────────────────────────────────────────────────────────────────────
@@ -721,6 +769,9 @@ select_difficulty() {
 # ─────────────────────────────────────────────────────────────────────
 
 show_completion() {
+    # Change to server directory
+    cd "$SERVER_DIR"
+    
     echo ""
     echo -e "${GREEN}${BOLD}═══════════════════════════════════════════════════════${NC}"
     echo -e "${GREEN}${BOLD}                  Setup Complete!${NC}"
@@ -741,8 +792,8 @@ show_completion() {
     fi
     
     echo ""
-    echo -e "${CYAN}Commands:${NC}"
-    echo -e "  Start:        ${GREEN}cd $SERVER_DIR && ./start.sh${NC}"
+    echo -e "${CYAN}Commands (run from this directory):${NC}"
+    echo -e "  Start:        ${GREEN}./start.sh${NC}"
     echo -e "  Background:   ${GREEN}./start-background.sh${NC}"
     echo -e "  Attach:       ${GREEN}screen -r minecraft${NC}"
     
@@ -757,6 +808,8 @@ show_completion() {
     echo -e "${CYAN}Connect:${NC}"
     echo -e "  Java:    ${GREEN}localhost:$JAVA_PORT${NC}"
     [ "$ENABLE_GEYSER" = true ] && echo -e "  Bedrock: ${GREEN}localhost:$BEDROCK_PORT${NC}"
+    echo ""
+    echo -e "${CYAN}Current directory:${NC} ${GREEN}$(pwd)${NC}"
     echo ""
 }
 
@@ -792,7 +845,7 @@ quick_setup() {
     
     echo -e "${CYAN}Starting server...${NC}"
     echo ""
-    cd "$SERVER_DIR" && ./start.sh
+    ./start.sh
 }
 
 custom_setup() {
@@ -831,7 +884,7 @@ custom_setup() {
     
     echo -e "${CYAN}Starting server...${NC}"
     echo ""
-    cd "$SERVER_DIR" && ./start.sh
+    ./start.sh
 }
 
 
@@ -879,10 +932,24 @@ setup_tunnels() {
     log_step "Port Forwarding Setup"
     separator
     
+    # Ensure server directory exists
+    mkdir -p "$SERVER_DIR"
+    
     # Check if geyser is enabled
     [ -f "$SERVER_DIR/plugins/Geyser-Spigot.jar" ] && ENABLE_GEYSER=true
     
+    echo -e "${CYAN}Scripts will be created in:${NC} $SERVER_DIR"
+    echo ""
+    
     select_port_forwarding
+    
+    echo ""
+    if [ "$ENABLE_NGROK" = true ] || [ "$ENABLE_PLAYIT" = true ]; then
+        echo -e "${GREEN}Scripts created:${NC}"
+        [ -f "$SERVER_DIR/start-ngrok.sh" ] && echo -e "  - ${GREEN}$SERVER_DIR/start-ngrok.sh${NC}"
+        [ -f "$SERVER_DIR/start-playit.sh" ] && echo -e "  - ${GREEN}$SERVER_DIR/start-playit.sh${NC}"
+        echo ""
+    fi
 }
 
 show_status() {
@@ -1015,7 +1082,10 @@ quick_purpur() {
     optimize_mobile
     
     show_completion
-    cd "$SERVER_DIR" && ./start.sh
+    
+    echo -e "${CYAN}Starting server...${NC}"
+    echo ""
+    ./start.sh
 }
 
 # ─────────────────────────────────────────────────────────────────────
