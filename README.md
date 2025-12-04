@@ -1,32 +1,60 @@
-# Termux Mobile Server Scripts
+# MCMS - Minecraft Mobile Server
 
-One-command setup scripts for running servers on Android via Termux.
+One-command Minecraft server setup for Android via Termux.
 
-## Scripts
+**Repository:** https://github.com/mukulx/MCMS
 
-| Script | Description | README |
-|--------|-------------|--------|
-| `ubuntu-termux.sh` | Install Ubuntu proot environment | [README-ubuntu.md](README-ubuntu.md) |
-| `paper-server.sh` | Minecraft Paper server (runs inside Ubuntu) | [README-paper.md](README-paper.md) |
+## Features
+
+- **Server Software:** Paper, Purpur, Folia
+- **Bedrock Support:** Geyser + Floodgate
+- **Remote Access:** playit.gg integration
+- **Auto Setup:** Java, dependencies, optimizations
+- **Mobile Optimized:** Aikar's flags, low RAM configs
 
 ## Quick Start
 
 ```bash
-# 1. Install Ubuntu first (in Termux)
+# 1. Install Ubuntu in Termux
 chmod +x ubuntu-termux.sh
 ./ubuntu-termux.sh --quick
 
 # 2. Enter Ubuntu
 proot-distro login ubuntu
 
-# 3. Install Minecraft server (inside Ubuntu)
-chmod +x paper-server.sh
-./paper-server.sh --quick
+# 3. Run MCMS
+chmod +x mcms.sh
+./mcms.sh
+```
+
+## Scripts
+
+| Script | Description |
+|--------|-------------|
+| `ubuntu-termux.sh` | Install Ubuntu proot in Termux |
+| `mcms.sh` | Minecraft server setup (run inside Ubuntu) |
+
+## MCMS Commands
+
+```bash
+./mcms.sh              # Interactive menu
+./mcms.sh --quick      # Quick Paper setup
+./mcms.sh --purpur     # Quick Purpur setup
+./mcms.sh --folia      # Quick Folia setup
+./mcms.sh --geyser     # Add Bedrock support
+./mcms.sh --playit     # Setup remote access
+./mcms.sh --start      # Start server
+./mcms.sh --update     # Check for updates
 ```
 
 ## Requirements
 
 - Android device (aarch64)
-- Termux app installed
-- ~1.5GB free storage
+- Termux app
+- ~1.5GB storage
 - 2GB+ RAM recommended
+
+## Documentation
+
+- [Ubuntu Setup Guide](README-ubuntu.md)
+- [Server Setup Guide](README-mcms.md)
