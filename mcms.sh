@@ -3,7 +3,7 @@
 # ═══════════════════════════════════════════════════════════════════
 # MCMS - Minecraft Mobile Server
 # https://github.com/mukulx/MCMS
-# 
+#
 # One-command Minecraft server setup for Termux Ubuntu proot
 # Supports: Paper, Purpur, Folia, Geyser, Floodgate, playit.gg
 # ═══════════════════════════════════════════════════════════════════
@@ -103,14 +103,14 @@ check_internet() {
 
 check_mcms_update() {
     log_info "Checking for MCMS updates..."
-    
+
     local remote_version=$(curl -sL "$MCMS_RAW" 2>/dev/null | grep '^MCMS_VERSION=' | head -1 | cut -d'"' -f2)
-    
+
     if [ -z "$remote_version" ]; then
         log_warn "Could not check for updates"
         return 1
     fi
-    
+
     if [ "$remote_version" != "$MCMS_VERSION" ]; then
         echo ""
         echo -e "${GREEN}═══════════════════════════════════════════════${NC}"
@@ -134,16 +134,16 @@ update_mcms() {
     print_banner
     log_step "Updating MCMS..."
     separator
-    
+
     check_internet
-    
+
     local script_path="$0"
     local backup_path="${script_path}.backup"
-    
+
     # Backup current script
     cp "$script_path" "$backup_path"
     log_info "Backup created: $backup_path"
-    
+
     # Download new version
     if curl -sL "$MCMS_RAW" -o "$script_path.new"; then
         # Verify download
@@ -166,7 +166,6 @@ update_mcms() {
     fi
 }
 
-
 # ─────────────────────────────────────────────────────────────────────
 # Java Management
 # ─────────────────────────────────────────────────────────────────────
@@ -182,9 +181,9 @@ check_java() {
 install_java() {
     local version=${1:-21}
     log_step "Installing Java $version..."
-    
+
     apt update -y &>/dev/null
-    
+
     case $version in
         21)
             apt install -y openjdk-21-jre-headless 2>/dev/null || \
@@ -206,24 +205,24 @@ install_java() {
 
 select_java() {
     local current=$(check_java)
-    
+
     echo ""
     echo -e "${CYAN}Java Version:${NC}"
     separator
-    
+
     if [ "$current" = "none" ]; then
         echo -e "  ${RED}Not installed${NC}"
     else
         echo -e "  Current: ${GREEN}Java $current${NC}"
     fi
-    
+
     echo ""
     echo -e "  ${GREEN}1${NC}) Java 17 (MC 1.17-1.20.4)"
     echo -e "  ${GREEN}2${NC}) Java 21 (MC 1.20.5+) ${YELLOW}[recommended]${NC}"
     [ "$current" != "none" ] && echo -e "  ${GREEN}3${NC}) Keep current"
     echo ""
     read -p "Select [default: 2]: " choice
-    
+
     case $choice in
         1) JAVA_VERSION="17"; install_java 17 ;;
         3) [ "$current" != "none" ] && JAVA_VERSION="$current" ;;
@@ -269,7 +268,7 @@ download_paper() {
     local version=$1 build=$2
     local file="paper-$version-$build.jar"
     local url="$PAPER_API/projects/paper/versions/$version/builds/$build/downloads/$file"
-    
+
     log_step "Downloading Paper $version (build $build)..."
     wget -q --show-progress -O "$SERVER_DIR/server.jar" "$url" || return 1
     log_success "Paper downloaded!"
@@ -287,7 +286,7 @@ get_purpur_build() {
 download_purpur() {
     local version=$1 build=$2
     local url="$PURPUR_API/$version/$build/download"
-    
+
     log_step "Downloading Purpur $version (build $build)..."
     wget -q --show-progress -O "$SERVER_DIR/server.jar" "$url" || return 1
     log_success "Purpur downloaded!"
@@ -307,7 +306,7 @@ download_folia() {
     local version=$1 build=$2
     local file="folia-$version-$build.jar"
     local url="$FOLIA_API/projects/folia/versions/$version/builds/$build/downloads/$file"
-    
+
     log_step "Downloading Folia $version (build $build)..."
     wget -q --show-progress -O "$SERVER_DIR/server.jar" "$url" || return 1
     log_success "Folia downloaded!"
@@ -338,7 +337,6 @@ download_server_jar() {
     esac
 }
 
-
 # ─────────────────────────────────────────────────────────────────────
 # Geyser & Floodgate (Bedrock Support)
 # ─────────────────────────────────────────────────────────────────────
@@ -365,7 +363,7 @@ download_floodgate() {
 
 configure_geyser() {
     mkdir -p "$SERVER_DIR/plugins/Geyser-Spigot"
-    
+
     cat > "$SERVER_DIR/plugins/Geyser-Spigot/config.yml" << EOF
 bedrock:
   address: 0.0.0.0
@@ -389,7 +387,7 @@ EOF
 
 configure_floodgate() {
     mkdir -p "$SERVER_DIR/plugins/floodgate"
-    
+
     cat > "$SERVER_DIR/plugins/floodgate/config.yml" << 'EOF'
 username-prefix: "."
 replace-spaces: true
@@ -422,7 +420,7 @@ select_geyser() {
     echo -e "  ${GREEN}2${NC}) Skip (Java only)"
     echo ""
     read -p "Select [default: 1]: " choice
-    
+
     case $choice in
         2) ENABLE_GEYSER=false ;;
         *) ENABLE_GEYSER=true ;;
@@ -435,36 +433,42 @@ select_geyser() {
 
 install_playit() {
     log_step "Installing playit.gg..."
-    
+
     local arch=$(uname -m)
     local playit_url=""
-    
+
     case $arch in
         aarch64) playit_url="https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-linux-aarch64" ;;
         armv7l)  playit_url="https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-linux-armv7" ;;
         x86_64)  playit_url="https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-linux-amd64" ;;
         *)       log_error "Unsupported arch: $arch"; return 1 ;;
     esac
-    
+
     wget -q --show-progress -O /usr/local/bin/playit "$playit_url"
     chmod +x /usr/local/bin/playit
-    
+
     log_success "playit.gg installed!"
 }
 
 check_playit_configured() {
-    # Check if playit has been configured (has a toml config)
-    [ -f "$HOME/.config/playit/playit.toml" ] || [ -f "/root/.config/playit/playit.toml" ]
+    # Check if playit has been configured (has a config file)
+    # Locations vary by install method (apt/system vs standalone binary)
+    [ -f "/etc/playit/playit.toml" ] || \
+    [ -f "$HOME/.config/playit/playit.toml" ] || \
+    [ -f "/root/.config/playit/playit.toml" ] || \
+    [ -f "$HOME/.playit/playit.toml" ] || \
+    [ -f "/root/.playit/playit.toml" ] || \
+    [ -d "/etc/playit" ]
 }
 
 setup_playit() {
     if ! command -v playit &>/dev/null; then
         install_playit
     fi
-    
+
     # Ensure server directory exists
     mkdir -p "$SERVER_DIR"
-    
+
     echo ""
     echo -e "${CYAN}playit.gg Setup:${NC}"
     separator
@@ -480,10 +484,10 @@ setup_playit() {
     echo ""
     echo -e "  ${YELLOW}After setup, playit will auto-start with server!${NC}"
     echo ""
-    
+
     # Create playit start script
     log_step "Creating playit scripts..."
-    
+
     cat > "$SERVER_DIR/start-playit.sh" << 'PLAYITSCRIPT'
 #!/bin/bash
 cd "$(dirname "$0")"
@@ -493,24 +497,39 @@ echo "════════════════════════�
 echo "  Starting playit.gg tunnel"
 echo "════════════════════════════════════════════"
 echo ""
-echo "If this is your first time:"
-echo "  1. A link will appear - open it in browser"
-echo "  2. Create account / login"
-echo "  3. Claim this agent"
-echo "  4. Add tunnels in dashboard:"
-echo "     - Minecraft Java: TCP port 25565"
-echo "     - Minecraft Bedrock: UDP port 19132"
+
+echo "If this is your first time, this script will run: playit setup"
+echo "Then it will start the agent normally."
 echo ""
-echo "Your public address will show in the playit.gg dashboard!"
+
+echo "Ports you likely want in the dashboard:"
+echo "  - Minecraft Java: TCP 25565"
+echo "  - Minecraft Bedrock: UDP 19132"
 echo ""
+
 echo "Press Ctrl+C to stop"
 echo ""
 
-playit
+# Detect configuration file (apt installs often use /etc/playit/playit.toml)
+if [ -f "/etc/playit/playit.toml" ] || \
+   [ -f "$HOME/.config/playit/playit.toml" ] || \
+   [ -f "$HOME/.playit/playit.toml" ] || \
+   [ -f "/root/.config/playit/playit.toml" ] || \
+   [ -f "/root/.playit/playit.toml" ]; then
+    playit
+else
+    echo "No playit config found yet. Running: playit setup"
+    echo "After claiming the agent, press Ctrl+C to return here if needed."
+    echo ""
+    playit setup
+    echo ""
+    echo "Starting playit agent..."
+    playit
+fi
 PLAYITSCRIPT
 
     chmod +x "$SERVER_DIR/start-playit.sh"
-    
+
     # Create background playit script with screen
     cat > "$SERVER_DIR/start-playit-background.sh" << 'PLAYITBG'
 #!/bin/bash
@@ -524,7 +543,7 @@ if screen -list | grep -q "\.playit"; then
 fi
 
 echo "Starting playit.gg in background..."
-screen -dmS playit playit
+screen -dmS playit bash -lc 'playit'
 
 sleep 2
 
@@ -549,9 +568,9 @@ PLAYITBG
 
     chmod +x "$SERVER_DIR/start-playit-background.sh"
     log_success "Created playit scripts"
-    
+
     ENABLE_PLAYIT=true
-    
+
     # Check if already configured
     if check_playit_configured; then
         log_info "playit.gg already configured!"
@@ -560,14 +579,21 @@ PLAYITBG
         echo ""
         read -p "Run playit setup now? (y/n) [default: y]: " run_now
         run_now=${run_now:-y}
-        
+
         if [[ "$run_now" =~ ^[Yy]$ ]]; then
             echo ""
-            log_info "Starting playit... Follow the instructions!"
+            log_info "Starting playit setup... Follow the instructions!"
             log_info "After setup, press Ctrl+C to continue"
             echo ""
-            playit
-            PLAYIT_CONFIGURED=true
+            playit setup
+
+            # Check if configured after running
+            if check_playit_configured; then
+                PLAYIT_CONFIGURED=true
+                log_success "playit.gg configured successfully!"
+            else
+                log_warn "playit may not be fully configured. Run ./start-playit.sh to complete setup."
+            fi
         else
             echo ""
             log_info "Run './start-playit.sh' to setup tunnels later"
@@ -587,7 +613,7 @@ select_port_forwarding() {
     echo -e "  ${GREEN}2${NC}) playit.gg (free, unlimited) ${YELLOW}[recommended]${NC}"
     echo ""
     read -p "Select [default: 1]: " choice
-    
+
     case $choice in
         2) setup_playit ;;
         *) log_info "LAN only mode" ;;
@@ -602,15 +628,15 @@ setup_server_files() {
     log_step "Creating server directory..."
     mkdir -p "$SERVER_DIR/plugins"
     cd "$SERVER_DIR"
-    
+
     # EULA
     echo "eula=true" > eula.txt
     log_success "EULA accepted"
-    
+
     # Convert boolean to string for properties
     local online_mode_str="false"
     [ "$ONLINE_MODE" = true ] && online_mode_str="true"
-    
+
     # server.properties
     cat > server.properties << EOF
 # Server Settings - Generated by Minecraft Server Setup
@@ -695,8 +721,8 @@ java \
     -jar server.jar nogui
 STARTSCRIPT
     chmod +x "$SERVER_DIR/start.sh"
-    
-    # Background script
+
+    # Background script with playit support
     cat > "$SERVER_DIR/start-background.sh" << 'BGSCRIPT'
 #!/bin/bash
 cd "$(dirname "$0")"
@@ -708,51 +734,77 @@ if ! command -v screen &>/dev/null; then
     exit 1
 fi
 
-# Check if already running
+# Check if server already running
 if screen -list | grep -q "\.minecraft"; then
     echo ""
     echo "Server is already running!"
     echo "Attach with: screen -r minecraft"
     echo ""
-    exit 1
-fi
-
-# Start server in screen session
-echo ""
-echo "Starting Minecraft server in background..."
-screen -dmS minecraft bash -c './start.sh; exec bash'
-
-# Wait a moment and check if it started
-sleep 2
-
-if screen -list | grep -q "\.minecraft"; then
-    echo ""
-    echo "════════════════════════════════════════════════"
-    echo "  Server started in background!"
-    echo "════════════════════════════════════════════════"
-    echo ""
-    echo "Commands:"
-    echo "  Attach to console:  screen -r minecraft"
-    echo "  Detach from console: Ctrl+A then D"
-    echo "  Stop server:        Type 'stop' in console"
-    echo "  List screens:       screen -ls"
-    echo ""
 else
-    echo ""
-    echo "Error: Failed to start server!"
-    echo "Try running ./start.sh directly to see errors."
-    echo ""
-    exit 1
+    # Start server in screen session
+    echo "Starting Minecraft server..."
+    screen -dmS minecraft bash -lc './start.sh; exec bash'
+    sleep 2
+
+    if screen -list | grep -q "\.minecraft"; then
+        echo "Server started! (screen: minecraft)"
+    else
+        echo "Error: Failed to start server!"
+        echo "Try running ./start.sh directly to see errors."
+        exit 1
+    fi
 fi
+
+# Check if playit is configured and start it
+PLAYIT_CONFIGURED=false
+
+# playit config can be in /etc (apt install) or in the user's home (standalone binary)
+if [ -f "/etc/playit/playit.toml" ] || \
+   [ -f "$HOME/.config/playit/playit.toml" ] || \
+   [ -f "/root/.config/playit/playit.toml" ] || \
+   [ -f "$HOME/.playit/playit.toml" ] || \
+   [ -f "/root/.playit/playit.toml" ]; then
+    PLAYIT_CONFIGURED=true
+fi
+
+if [ "$PLAYIT_CONFIGURED" = true ] && command -v playit &>/dev/null; then
+    if screen -list | grep -q "\.playit"; then
+        echo "playit already running! (screen: playit)"
+    else
+        echo "Starting playit.gg tunnel..."
+        screen -dmS playit bash -lc 'playit'
+        sleep 2
+
+        if screen -list | grep -q "\.playit"; then
+            echo "playit started! (screen: playit)"
+        else
+            echo "Warning: Failed to start playit"
+        fi
+    fi
+fi
+
+echo ""
+echo "════════════════════════════════════════════════"
+echo "  Services Running:"
+echo "════════════════════════════════════════════════"
+echo ""
+screen -list | grep -E "\.(minecraft|playit)" || echo "  No screens found"
+echo ""
+echo "Commands:"
+echo "  Server console:  screen -r minecraft"
+echo "  playit console:  screen -r playit"
+echo "  Detach:          Ctrl+A then D"
+echo "  List screens:    screen -ls"
+echo ""
 BGSCRIPT
     chmod +x "$SERVER_DIR/start-background.sh"
-    
+
     log_success "Start scripts created"
 }
 
 optimize_mobile() {
     mkdir -p "$SERVER_DIR/config"
-    
+
     cat > "$SERVER_DIR/config/paper-global.yml" << 'EOF'
 chunk-loading-basic:
   autoconfig-send-distance: true
@@ -765,7 +817,6 @@ chunk-system:
 EOF
     log_success "Mobile optimizations applied"
 }
-
 
 # ─────────────────────────────────────────────────────────────────────
 # Selection Menus
@@ -782,7 +833,7 @@ select_server_type() {
     echo -e "  ${YELLOW}Note: Folia requires plugins with Folia support${NC}"
     echo ""
     read -p "Select [default: 1]: " choice
-    
+
     case $choice in
         2) SERVER_TYPE="purpur" ;;
         3) SERVER_TYPE="folia" ;;
@@ -799,7 +850,7 @@ select_version() {
     echo -e "  ${GREEN}2${NC}) Enter version manually (e.g., 1.20.4)"
     echo ""
     read -p "Select [default: 1]: " method
-    
+
     if [ "$method" = "2" ]; then
         echo ""
         read -p "Enter Minecraft version (e.g., 1.20.4, 1.19.4): " manual_version
@@ -809,32 +860,32 @@ select_version() {
             return
         fi
     fi
-    
+
     log_info "Fetching ${SERVER_TYPE^} versions..."
-    
+
     local versions_list=$(get_versions)
     [ -z "$versions_list" ] && { log_error "Failed to fetch versions"; exit 1; }
-    
+
     readarray -t versions <<< "$versions_list"
     local count=${#versions[@]}
-    
+
     echo ""
     echo -e "${CYAN}Minecraft Version:${NC}"
     separator
     echo -e "  ${YELLOW}(1 = latest, higher numbers = older versions)${NC}"
     echo ""
-    
+
     for i in "${!versions[@]}"; do
         local num=$((count - i))
         local ver="${versions[$i]}"
         [ $num -eq 1 ] && echo -e "  ${GREEN}${num}${NC}) $ver ${YELLOW}[latest]${NC}" || echo -e "  ${GREEN}${num}${NC}) $ver"
     done
-    
+
     echo ""
     read -p "Select (1-$count) [default: 1]: " choice
-    
+
     [ -z "$choice" ] || [ "$choice" -lt 1 ] 2>/dev/null || [ "$choice" -gt "$count" ] 2>/dev/null && choice=1
-    
+
     local idx=$((count - choice))
     SELECTED_VERSION="${versions[$idx]}"
     log_info "Selected: $SELECTED_VERSION"
@@ -853,7 +904,7 @@ select_ram() {
     echo -e "  ${GREEN}7${NC}) Custom (enter value like 6G)"
     echo ""
     read -p "Select [default: 1]: " choice
-    
+
     case $choice in
         2) RAM_SETTING="512M" ;;
         3) RAM_SETTING="1G" ;;
@@ -873,7 +924,7 @@ select_ram() {
             ;;
         *) RAM_SETTING="auto" ;;
     esac
-    
+
     [ "$RAM_SETTING" != "auto" ] && log_info "RAM: $RAM_SETTING"
 }
 
@@ -885,7 +936,7 @@ select_online_mode() {
     echo -e "  ${GREEN}2${NC}) Online (requires Mojang account)"
     echo ""
     read -p "Select [default: 1]: " choice
-    
+
     case $choice in
         2) ONLINE_MODE=true; log_info "Online mode: ON" ;;
         *) ONLINE_MODE=false; log_info "Online mode: OFF" ;;
@@ -903,25 +954,25 @@ select_world_type() {
     echo -e "  ${GREEN}5${NC}) Single Biome"
     echo ""
     read -p "Select [default: 1]: " choice
-    
+
     case $choice in
-        2) 
+        2)
             LEVEL_TYPE="minecraft:flat"
             WORLD_TYPE="flat"
             ;;
-        3) 
+        3)
             LEVEL_TYPE="minecraft:large_biomes"
             WORLD_TYPE="large_biomes"
             ;;
-        4) 
+        4)
             LEVEL_TYPE="minecraft:amplified"
             WORLD_TYPE="amplified"
             ;;
-        5) 
+        5)
             LEVEL_TYPE="minecraft:single_biome_surface"
             WORLD_TYPE="single_biome"
             ;;
-        *) 
+        *)
             LEVEL_TYPE="minecraft:normal"
             WORLD_TYPE="normal"
             ;;
@@ -939,7 +990,7 @@ select_gamemode() {
     echo -e "  ${GREEN}4${NC}) Spectator"
     echo ""
     read -p "Select [default: 1]: " choice
-    
+
     case $choice in
         2) GAMEMODE="creative" ;;
         3) GAMEMODE="adventure" ;;
@@ -958,7 +1009,7 @@ select_difficulty() {
     echo -e "  ${GREEN}4${NC}) Hard"
     echo ""
     read -p "Select [default: 3]: " choice
-    
+
     case $choice in
         1) DIFFICULTY="peaceful" ;;
         2) DIFFICULTY="easy" ;;
@@ -974,15 +1025,15 @@ select_difficulty() {
 show_completion() {
     # Change to server directory
     cd "$SERVER_DIR"
-    
+
     # Determine online mode display
     local online_str="OFF (cracked)"
     [ "$ONLINE_MODE" = true ] && online_str="ON (premium)"
-    
+
     # Determine RAM display
     local ram_str="Auto"
     [ "$RAM_SETTING" != "auto" ] && ram_str="$RAM_SETTING"
-    
+
     echo ""
     echo -e "${GREEN}${BOLD}═══════════════════════════════════════════════════════${NC}"
     echo -e "${GREEN}${BOLD}                  Setup Complete!${NC}"
@@ -997,46 +1048,55 @@ show_completion() {
     echo -e "  World:      ${GREEN}$WORLD_TYPE${NC}"
     echo -e "  Online:     ${GREEN}$online_str${NC}"
     echo -e "  Location:   ${GREEN}$SERVER_DIR${NC}"
-    
+
     if [ "$ENABLE_GEYSER" = true ]; then
         echo ""
         echo -e "${CYAN}Bedrock Support:${NC} ${GREEN}Enabled${NC}"
         echo -e "  Java Port:    ${GREEN}$JAVA_PORT${NC}"
         echo -e "  Bedrock Port: ${GREEN}$BEDROCK_PORT${NC}"
     fi
-    
+
     if [ "$ENABLE_PLAYIT" = true ]; then
         echo ""
         echo -e "${CYAN}Port Forwarding:${NC} ${GREEN}playit.gg${NC}"
-        if [ "$PLAYIT_CONFIGURED" = true ]; then
-            echo -e "  Status: ${GREEN}Configured${NC}"
-            echo -e "  ${YELLOW}Check playit.gg dashboard for your public IP!${NC}"
+        if check_playit_configured; then
+            echo -e "  Status: ${GREEN}Configured ✓${NC}"
+            echo -e "  ${GREEN}playit will auto-start with ./start-background.sh${NC}"
         else
             echo -e "  Status: ${YELLOW}Not configured yet${NC}"
             echo -e "  Run ${GREEN}./start-playit.sh${NC} to setup"
         fi
     fi
-    
+
     echo ""
-    echo -e "${CYAN}Commands (run from this directory):${NC}"
-    echo -e "  Start:        ${GREEN}./start.sh${NC}"
-    echo -e "  Background:   ${GREEN}./start-background.sh${NC}"
-    echo -e "  Attach:       ${GREEN}screen -r minecraft${NC}"
-    
-    if [ "$ENABLE_PLAYIT" = true ]; then
-        echo -e "  playit:       ${GREEN}./start-playit.sh${NC}"
-        echo -e "  playit (bg):  ${GREEN}./start-playit-background.sh${NC}"
+    echo -e "${CYAN}To start the server:${NC}"
+    echo ""
+    echo -e "  ${YELLOW}cd $SERVER_DIR${NC}"
+
+    if [ "$ENABLE_PLAYIT" = true ] && check_playit_configured; then
+        echo -e "  ${YELLOW}./start-playit-background.sh${NC}  ${GREEN}# Start playit tunnel${NC}"
     fi
-    
+
+    echo -e "  ${YELLOW}./start.sh${NC}                    ${GREEN}# Start server${NC}"
+
+    echo ""
+    echo -e "${CYAN}Or use background mode:${NC}"
+    echo -e "  ${YELLOW}./start-background.sh${NC}         ${GREEN}# Starts both server & playit${NC}"
+
+    echo ""
+    echo -e "${CYAN}Screen commands:${NC}"
+    echo -e "  ${GREEN}screen -r minecraft${NC}  - Attach to server"
+    [ "$ENABLE_PLAYIT" = true ] && echo -e "  ${GREEN}screen -r playit${NC}     - Attach to playit"
+    echo -e "  ${GREEN}Ctrl+A then D${NC}        - Detach from screen"
+    echo -e "  ${GREEN}screen -ls${NC}           - List screens"
+
     echo ""
     echo -e "${CYAN}Connect:${NC}"
     echo -e "  LAN:     ${GREEN}localhost:$JAVA_PORT${NC}"
     [ "$ENABLE_GEYSER" = true ] && echo -e "  Bedrock: ${GREEN}localhost:$BEDROCK_PORT${NC}"
     if [ "$ENABLE_PLAYIT" = true ]; then
-        echo -e "  Remote:  ${YELLOW}See playit.gg dashboard for public IP${NC}"
+        echo -e "  Remote:  ${YELLOW}Check playit.gg dashboard for public IP${NC}"
     fi
-    echo ""
-    echo -e "${CYAN}Current directory:${NC} ${GREEN}$(pwd)${NC}"
     echo ""
 }
 
@@ -1044,10 +1104,10 @@ quick_setup() {
     print_banner
     log_step "Quick Setup - Paper with defaults"
     separator
-    
+
     check_internet
     ensure_java
-    
+
     # Set defaults
     SERVER_TYPE="paper"
     GAMEMODE="survival"
@@ -1056,35 +1116,31 @@ quick_setup() {
     WORLD_TYPE="normal"
     LEVEL_TYPE="minecraft:normal"
     RAM_SETTING="auto"
-    
+
     log_info "Fetching latest Paper version..."
     local versions=$(get_versions)
     SELECTED_VERSION=$(echo "$versions" | tail -1)
     [ -z "$SELECTED_VERSION" ] && { log_error "Failed to get version"; exit 1; }
-    
+
     log_info "Version: $SELECTED_VERSION"
-    
+
     local build=$(get_build "$SELECTED_VERSION")
     [ -z "$build" ] || [ "$build" = "null" ] && { log_error "Failed to get build"; exit 1; }
     log_info "Build: $build"
-    
+
     setup_server_files
     download_server_jar "$SELECTED_VERSION" "$build"
     create_start_script
     optimize_mobile
-    
+
     show_completion
-    
-    echo -e "${CYAN}Starting server...${NC}"
-    echo ""
-    ./start.sh
 }
 
 custom_setup() {
     print_banner
     log_step "Custom Setup"
     separator
-    
+
     check_internet
     select_java
     select_server_type
@@ -1096,25 +1152,25 @@ custom_setup() {
     select_online_mode
     select_geyser
     select_port_forwarding
-    
+
     echo ""
     log_step "Downloading and configuring..."
     separator
-    
+
     local build=$(get_build "$SELECTED_VERSION")
     [ -z "$build" ] || [ "$build" = "null" ] && { log_error "Failed to get build"; exit 1; }
-    
+
     setup_server_files
     download_server_jar "$SELECTED_VERSION" "$build"
     create_start_script
     optimize_mobile
-    
+
     [ "$ENABLE_GEYSER" = true ] && setup_geyser_floodgate
-    
+
     # Update RAM if not auto
     if [ "$RAM_SETTING" != "auto" ]; then
         # Update both XMX and XMS in start.sh
-        sed -i "s/XMX=\"[^\"]*\"/XMX=\"$RAM_SETTING\"/" "$SERVER_DIR/start.sh"
+        sed -i "s/XMX=\\\"[^\\\"]*\\\"/XMX=\\\"$RAM_SETTING\\\"/" "$SERVER_DIR/start.sh"
         # Set XMS to half of XMX or same if small
         local xms_val
         case $RAM_SETTING in
@@ -1125,16 +1181,11 @@ custom_setup() {
             4G) xms_val="2G" ;;
             *) xms_val="1G" ;;
         esac
-        sed -i "s/XMS=\"[^\"]*\"/XMS=\"$xms_val\"/" "$SERVER_DIR/start.sh"
+        sed -i "s/XMS=\\\"[^\\\"]*\\\"/XMS=\\\"$xms_val\\\"/" "$SERVER_DIR/start.sh"
     fi
-    
-    show_completion
-    
-    echo -e "${CYAN}Starting server...${NC}"
-    echo ""
-    ./start.sh
-}
 
+    show_completion
+}
 
 # ─────────────────────────────────────────────────────────────────────
 # Additional Setup Functions
@@ -1142,33 +1193,33 @@ custom_setup() {
 
 update_server() {
     print_banner
-    
+
     [ ! -d "$SERVER_DIR" ] && { log_error "No server at $SERVER_DIR"; exit 1; }
-    
+
     log_step "Update Server"
     separator
-    
+
     select_server_type
     select_version
-    
+
     local build=$(get_build "$SELECTED_VERSION")
     [ -z "$build" ] || [ "$build" = "null" ] && { log_error "Failed to get build"; exit 1; }
-    
+
     # Backup
     [ -f "$SERVER_DIR/server.jar" ] && mv "$SERVER_DIR/server.jar" "$SERVER_DIR/server.jar.backup"
-    
+
     download_server_jar "$SELECTED_VERSION" "$build"
     log_success "Updated to ${SERVER_TYPE^} $SELECTED_VERSION (build $build)"
 }
 
 add_geyser() {
     print_banner
-    
+
     [ ! -d "$SERVER_DIR" ] && { log_error "No server at $SERVER_DIR"; exit 1; }
-    
+
     log_step "Adding Geyser + Floodgate"
     separator
-    
+
     setup_geyser_floodgate
     log_success "Geyser & Floodgate installed!"
     echo ""
@@ -1179,18 +1230,18 @@ setup_tunnels() {
     print_banner
     log_step "playit.gg Setup"
     separator
-    
+
     # Ensure server directory exists
     mkdir -p "$SERVER_DIR"
-    
+
     # Check if geyser is enabled
     [ -f "$SERVER_DIR/plugins/Geyser-Spigot.jar" ] && ENABLE_GEYSER=true
-    
+
     echo -e "${CYAN}Scripts will be created in:${NC} $SERVER_DIR"
     echo ""
-    
+
     setup_playit
-    
+
     echo ""
     if [ "$ENABLE_PLAYIT" = true ]; then
         echo -e "${GREEN}Scripts created:${NC}"
@@ -1202,38 +1253,49 @@ setup_tunnels() {
 
 show_status() {
     print_banner
-    
+
     local java_ver=$(check_java)
-    
+
     echo -e "${CYAN}System Status:${NC}"
     separator
-    
+
     if [ "$java_ver" = "none" ]; then
         echo -e "  Java:     ${RED}Not installed${NC}"
     else
         echo -e "  Java:     ${GREEN}Version $java_ver${NC}"
     fi
-    
+
     if [ -d "$SERVER_DIR" ]; then
         echo -e "  Server:   ${GREEN}Installed${NC}"
         echo -e "  Location: ${GREEN}$SERVER_DIR${NC}"
-        
+
         [ -f "$SERVER_DIR/plugins/Geyser-Spigot.jar" ] && echo -e "  Geyser:   ${GREEN}Installed${NC}" || echo -e "  Geyser:   ${YELLOW}Not installed${NC}"
         [ -f "$SERVER_DIR/plugins/floodgate-spigot.jar" ] && echo -e "  Floodgate:${GREEN}Installed${NC}" || echo -e "  Floodgate:${YELLOW}Not installed${NC}"
     else
         echo -e "  Server:   ${RED}Not installed${NC}"
     fi
-    
+
     if command -v playit &>/dev/null; then
         if check_playit_configured; then
-            echo -e "  playit:   ${GREEN}Configured${NC}"
+            echo -e "  playit:   ${GREEN}Configured ✓${NC}"
         else
             echo -e "  playit:   ${YELLOW}Installed (not configured)${NC}"
         fi
     else
         echo -e "  playit:   ${YELLOW}Not installed${NC}"
     fi
-    
+
+    # Show running screens
+    if command -v screen &>/dev/null; then
+        local screens=$(screen -list 2>/dev/null | grep -E "\.(minecraft|playit)" | wc -l)
+        if [ "$screens" -gt 0 ]; then
+            echo ""
+            echo -e "${CYAN}Running:${NC}"
+            screen -list 2>/dev/null | grep "\.minecraft" && echo -e "  Server:   ${GREEN}Running${NC}"
+            screen -list 2>/dev/null | grep "\.playit" && echo -e "  playit:   ${GREEN}Running${NC}"
+        fi
+    fi
+
     echo ""
 }
 
@@ -1244,7 +1306,7 @@ show_status() {
 main_menu() {
     print_banner
     show_status
-    
+
     echo -e "${CYAN}Options:${NC}"
     separator
     echo -e "  ${GREEN}1${NC}) Quick Setup (Paper, latest, LAN only)"
@@ -1259,7 +1321,7 @@ main_menu() {
     echo -e "  ${GREEN}0${NC}) Exit"
     echo ""
     read -p "Select: " choice
-    
+
     case $choice in
         1) check_environment; install_dependencies; quick_setup ;;
         2) check_environment; install_dependencies; custom_setup ;;
@@ -1328,10 +1390,10 @@ quick_purpur() {
     print_banner
     log_step "Quick Setup - Purpur"
     separator
-    
+
     check_internet
     ensure_java
-    
+
     # Set defaults
     SERVER_TYPE="purpur"
     GAMEMODE="survival"
@@ -1340,38 +1402,34 @@ quick_purpur() {
     WORLD_TYPE="normal"
     LEVEL_TYPE="minecraft:normal"
     RAM_SETTING="auto"
-    
+
     log_info "Fetching latest Purpur version..."
     local versions=$(get_purpur_versions)
     SELECTED_VERSION=$(echo "$versions" | tail -1)
     [ -z "$SELECTED_VERSION" ] && { log_error "Failed to get version"; exit 1; }
-    
+
     local build=$(get_purpur_build "$SELECTED_VERSION")
     [ -z "$build" ] || [ "$build" = "null" ] && { log_error "Failed to get build"; exit 1; }
-    
+
     setup_server_files
     download_purpur "$SELECTED_VERSION" "$build"
     create_start_script
     optimize_mobile
-    
+
     show_completion
-    
-    echo -e "${CYAN}Starting server...${NC}"
-    echo ""
-    ./start.sh
 }
 
 quick_folia() {
     print_banner
     log_step "Quick Setup - Folia (Multi-threaded)"
     separator
-    
+
     echo -e "${YELLOW}Note: Folia is experimental and requires Folia-compatible plugins!${NC}"
     echo ""
-    
+
     check_internet
     ensure_java
-    
+
     # Set defaults
     SERVER_TYPE="folia"
     GAMEMODE="survival"
@@ -1380,25 +1438,21 @@ quick_folia() {
     WORLD_TYPE="normal"
     LEVEL_TYPE="minecraft:normal"
     RAM_SETTING="auto"
-    
+
     log_info "Fetching latest Folia version..."
     local versions=$(get_folia_versions)
     SELECTED_VERSION=$(echo "$versions" | tail -1)
     [ -z "$SELECTED_VERSION" ] && { log_error "Failed to get version"; exit 1; }
-    
+
     local build=$(get_folia_build "$SELECTED_VERSION")
     [ -z "$build" ] || [ "$build" = "null" ] && { log_error "Failed to get build"; exit 1; }
-    
+
     setup_server_files
     download_folia "$SELECTED_VERSION" "$build"
     create_start_script
     optimize_mobile
-    
+
     show_completion
-    
-    echo -e "${CYAN}Starting server...${NC}"
-    echo ""
-    ./start.sh
 }
 
 # ─────────────────────────────────────────────────────────────────────
